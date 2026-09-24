@@ -201,8 +201,14 @@ impl Arbiter {
 
     pub async fn thaw_lease(&self, lease_id: LeaseId) -> Result<()> {
         let mut state = self.state.write().await;
-        let lease = state.leases.get_mut(&lease_id).ok_or_else(|| Error::LeaseNotFound(lease_id.to_string()))?;
-        if lease.state == LeaseState::Frozen {
+        let lease = state
+            .leases
+            .get_mut(&lease_id)
+            .ok_or_else(|| Error::LeaseNotFound(lease_id.to_string()))?;
+        if matches!(
+            lease.state,
+            LeaseState::Frozen | LeaseState::Preempted | LeaseState::Preempting
+        ) {
             lease.state = LeaseState::Active;
         }
         Ok(())
