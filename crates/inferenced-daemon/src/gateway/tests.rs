@@ -27,7 +27,7 @@ fn make_test_state() -> Arc<AppState> {
     });
     let arbiter = Arc::new(Arbiter::new(topo));
     let preempt = Arc::new(PreemptCoordinator::new(arbiter.clone()));
-    Arc::new(AppState { arbiter, preempt })
+    Arc::new(AppState { arbiter, preempt, api_token: None })
 }
 
 #[tokio::test]

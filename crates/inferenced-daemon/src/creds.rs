@@ -21,6 +21,7 @@ pub fn load_credential(name: &str) -> Option<String> {
 }
 
 /// Load raw credential bytes by name from $CREDENTIALS_DIRECTORY.
+#[allow(dead_code)]
 pub fn load_credential_bytes(name: &str) -> Option<Vec<u8>> {
     let creds_dir = env::var("CREDENTIALS_DIRECTORY").ok()?;
     let path = PathBuf::from(creds_dir).join(name);

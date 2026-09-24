@@ -9,6 +9,6 @@ CPUWeight=100
 IOWeight=100
 MemoryHigh=80%
 ManagedOOMPreference=avoid
-ManagedOOMMemoryPressure=auto
+ManagedOOMMemoryPressure=kill
 ManagedOOMMemoryPressureLimit=85%
 ManagedOOMSwap=auto

@@ -16,6 +16,8 @@ pub struct AppState {
     pub arbiter: Arc<Arbiter>,
     #[allow(dead_code)]
     pub preempt: Arc<PreemptCoordinator>,
+    #[allow(dead_code)]
+    pub api_token: Option<String>,
 }
 
 pub async fn health_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {

@@ -44,6 +44,7 @@ DeviceAllow=/dev/kfd rw
 
 # cgroup v2 & systemd-oomd Protection
 ManagedOOMPreference=avoid
+OOMScoreAdjust=-900
 
 # Logging & systemd-journald
 StandardOutput=journal

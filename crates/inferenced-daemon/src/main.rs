@@ -111,9 +111,14 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // 4. HTTP Gateway Router & Server (FD 5 or standalone bind)
+    let api_token = creds::resolve_secret("INFERENCED_API_TOKEN", "gateway_api_token");
+    if api_token.is_some() {
+        info!("Gateway API token configured via systemd-creds ($CREDENTIALS_DIRECTORY)");
+    }
     let state = Arc::new(AppState {
         arbiter: arbiter.clone(),
         preempt: preempt.clone(),
+        api_token,
     });
     let app = build_gateway_router(state);
 

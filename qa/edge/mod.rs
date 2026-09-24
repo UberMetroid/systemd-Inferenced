@@ -8,6 +8,8 @@ use std::io::Write;
 use tempfile::NamedTempFile;
 
 mod boundary_limits;
+mod challenger_preempt;
+mod challenger_stream_paging;
 mod cli_edge;
 mod corrupt_inputs;
 mod dead_client_reclaim;
