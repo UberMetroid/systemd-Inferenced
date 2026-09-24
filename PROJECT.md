@@ -41,12 +41,12 @@ systemd-inferenced is a 100% pure Rust unprivileged heterogeneous hardware arbit
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Core Compute & Memory Engine | `crates/inferenced-core` (discovery, arbiter, preempt coordinator, memfd SCM_RIGHTS, paging) | none | PLANNED |
-| M2 | Systemd Daemon, Varlink & Sentry | `crates/inferenced-daemon` (socket activation FDs 3..5, abstract notify, Varlink server, Sentry enclave) | M1 | PLANNED |
-| M3 | Expanded CLI Suite & Unix Filter | `crates/inferenctl` (18 commands, stream filter `exec`, global flags, modular <= 180 LOC design) | M1, M2 | PLANNED |
-| M4 | Packaging, Installer & Docs | `install/`, `systemd/`, `docs/`, `website/` (install/uninstall scripts, unit checks, docs, web) | M2, M3 | PLANNED |
-| M5 | Final Integration & Live Verification | Pass 100% E2E test suite (Tiers 1-4), Tier 5 adversarial hardening, live validation (Varlink, Stream, Sentry) | M1, M2, M3, M4, E2E | PLANNED |
-| E2E | E2E Testing Track | Comprehensive opaque-box test suite (Tiers 1-4) in `qa/`, test runner, `TEST_READY.md` | none (parallel) | IN_PROGRESS |
+| M1 | Core Compute & Memory Engine | `crates/inferenced-core` (discovery, arbiter, preempt coordinator, memfd SCM_RIGHTS, paging) | none | DONE |
+| M2 | Systemd Daemon, Varlink & Sentry | `crates/inferenced-daemon` (socket activation FDs 3..5, abstract notify, Varlink server, Sentry enclave) | M1 | DONE |
+| M3 | Expanded CLI Suite & Unix Filter | `crates/inferenctl` (18 commands, stream filter `exec`, global flags, modular <= 180 LOC design) | M1, M2 | DONE |
+| M4 | Packaging, Installer & Docs | `install/`, `systemd/`, `docs/`, `website/` (install/uninstall scripts, unit checks, docs, web) | M2, M3 | DONE |
+| M5 | Final Integration & Live Verification | Pass 100% E2E test suite (Tiers 1-4), Tier 5 adversarial hardening, live validation (Varlink, Stream, Sentry) | M1, M2, M3, M4, E2E | DONE |
+| E2E | E2E Testing Track | Comprehensive opaque-box test suite (Tiers 1-4) in `qa/`, test runner, `TEST_READY.md` | none (parallel) | DONE |
 
 ## Interface Contracts
 ### `inferenced-core` ↔ `inferenced-daemon`
