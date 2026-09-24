@@ -1,0 +1,30 @@
+[package]
+name = "inferenced-qa"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+inferenced-core = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[[test]]
+name = "unit_tests"
+path = "unit/mod.rs"
+
+[[test]]
+name = "edge_tests"
+path = "edge/mod.rs"
+
+[[test]]
+name = "fuzz_tests"
+path = "fuzz/mod.rs"

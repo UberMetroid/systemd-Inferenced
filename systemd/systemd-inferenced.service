@@ -1,0 +1,39 @@
+[Unit]
+Description=Heterogeneous AI Hardware Arbiter and Model Lifecycle Broker
+Documentation=https://github.com/UberMetroid/systemd-Inferenced
+After=network.target local-fs.target
+Requires=systemd-inferenced.socket
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/systemd-inferenced
+Restart=on-failure
+RestartSec=3s
+Slice=ai.slice
+
+# Security & Sandboxing
+User=inferenced
+Group=inferenced
+SupplementaryGroups=render video
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+RuntimeDirectory=systemd-inferenced
+ConfigurationDirectory=systemd/inferenced.conf.d
+StateDirectory=systemd-inferenced
+LogsDirectory=systemd-inferenced
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+
+# Linux Device Permissions (DRM & Accel)
+DeviceAllow=/dev/dri/renderD* rw
+DeviceAllow=/dev/accel/* rw
+DeviceAllow=/dev/hailo* rw
+DeviceAllow=/dev/kfd rw
+
+# cgroup v2 & OOM Protection
+ManagedOOMPreference=avoid
+
+[Install]
+WantedBy=multi-user.target

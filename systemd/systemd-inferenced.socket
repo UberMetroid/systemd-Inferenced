@@ -1,0 +1,18 @@
+[Unit]
+Description=systemd-inferenced Activation Sockets
+Documentation=https://github.com/UberMetroid/systemd-Inferenced
+
+[Socket]
+# Varlink IPC socket
+ListenStream=/run/systemd-inferenced/io.systemd.inferenced1
+
+# Dedicated Sentry Emergency Triage socket
+ListenStream=/run/systemd-inferenced/sentry.sock
+SocketMode=0660
+SocketGroup=sentry
+
+# Local OpenAI-compatible gateway socket
+ListenStream=127.0.0.1:11434
+
+[Install]
+WantedBy=sockets.target

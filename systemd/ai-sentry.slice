@@ -1,0 +1,13 @@
+[Unit]
+Description=systemd-sentry Emergency Triage Enclave Slice
+Documentation=https://github.com/UberMetroid/systemd-sentry
+Before=slices.target
+
+[Slice]
+# Emergency supervisor priority: absolute precedence, protected memory
+CPUWeight=1000
+IOWeight=1000
+MemoryMin=2G
+ManagedOOMPreference=avoid
+ManagedOOMMemoryPressure=kill
+ManagedOOMMemoryPressureLimit=95%

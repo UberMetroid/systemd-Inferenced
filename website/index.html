@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>systemd-inferenced — Heterogeneous AI Compute Fabric</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">systemd-inferenced</div>
+            <nav>
+                <a href="#features">Features</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#sentry">systemd-sentry</a>
+                <a href="https://github.com/UberMetroid/systemd-Inferenced" class="btn">GitHub</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <span class="badge">Linux Compute Fabric in Pure Rust</span>
+            <h1>Unified Resource Scheduling for Local AI Workloads</h1>
+            <p>An unprivileged hardware arbiter and model lifecycle broker operating between systemd and competing inference engines. Eliminating VRAM contention, memory bus starvation, and CUDA OOM panics.</p>
+            <div class="cta-row">
+                <a href="#install" class="btn btn-primary">Quickstart</a>
+                <a href="#architecture" class="btn btn-secondary">Architecture Spec</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="features">
+        <div class="container grid">
+            <div class="card">
+                <h3>Heterogeneous Compute Planes</h3>
+                <p>Unified discovery and scheduling across discrete GPUs (DRM/NVML), NPUs (/dev/accel/*, Hailo), UMA APUs, and CPU AMX/AVX matrix cores.</p>
+            </div>
+            <div class="card">
+                <h3>Bus Saturation Guard</h3>
+                <p>Monitors Linux kernel Pressure Stall Information (PSI) and resctrl MBM to prevent LLMs from starving desktop compositors and audio servers.</p>
+            </div>
+            <div class="card">
+                <h3>Sentry Emergency Enclave</h3>
+                <p>Dedicated out-of-band compute slice for systemd-sentry crash triage, surviving complete GPU driver panics.</p>
+            </div>
+            <div class="card">
+                <h3>Socket Activation</h3>
+                <p>Dynamic demand paging keeping heavy inference daemons dormant until incoming socket connections request a compute lease.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="sentry" class="sentry-section">
+        <div class="container">
+            <h2>Zero-Trust Integration with systemd-sentry</h2>
+            <p>When services crash, systemd-sentry provides instantaneous root-cause analysis. systemd-inferenced provides the unbreakable, low-latency compute plane that guarantees Sentry never suffers OOM or queue latency during incident triage.</p>
+            <pre><code>$ inferenctl status
+● systemd-inferenced.service - Heterogeneous AI Compute Fabric
+     Status: active (running)
+  Supervisory Enclave: systemd-sentry.service
+  IPC Endpoint: /run/systemd-inferenced/sentry.sock
+  Preemption Guarantee: 0ms queue delay, immediate batch suspension</code></pre>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>systemd-inferenced is open source software released under the Apache 2.0 License.</p>
+        </div>
+    </footer>
+</body>
+</html>

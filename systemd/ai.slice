@@ -1,0 +1,10 @@
+[Unit]
+Description=AI Inference and Hardware Workloads Root Slice
+Documentation=https://github.com/UberMetroid/systemd-Inferenced
+Before=slices.target
+
+[Slice]
+# Prevent unmanaged AI workloads from starving the desktop/system
+CPUWeight=100
+IOWeight=100
+MemoryHigh=80%
