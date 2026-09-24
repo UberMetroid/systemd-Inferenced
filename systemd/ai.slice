@@ -7,7 +7,8 @@ Before=slices.target
 # Root slice for AI workloads and lifecycle broker
 CPUWeight=100
 IOWeight=100
-MemoryMin=2G
+MemoryMin=512M
+MemoryLow=1.5G
 MemoryHigh=80%
 ManagedOOMPreference=avoid
 ManagedOOMMemoryPressure=kill

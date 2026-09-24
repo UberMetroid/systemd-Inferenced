@@ -7,5 +7,6 @@ Before=slices.target
 # Emergency supervisor priority: absolute precedence, protected memory
 CPUWeight=1000
 IOWeight=1000
-MemoryMin=2G
+MemoryMin=512M
+MemoryLow=1G
 ManagedOOMPreference=omit

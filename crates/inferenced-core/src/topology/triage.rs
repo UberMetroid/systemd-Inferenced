@@ -21,6 +21,9 @@ pub fn assign_triage_enclave(planes: &mut [ComputePlane]) -> Option<String> {
         cpu.available_memory_bytes = cpu
             .available_memory_bytes
             .saturating_sub(triage_quota);
+        cpu.total_memory_bytes = cpu
+            .total_memory_bytes
+            .saturating_sub(triage_quota);
         return Some(cpu.id.clone());
     }
 

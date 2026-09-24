@@ -38,15 +38,18 @@ pub fn resolve_secret(env_var: &str, cred_name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn test_load_credential_unset_env() {
+        let _guard = LOCK.lock().unwrap();
         env::remove_var("CREDENTIALS_DIRECTORY");
         assert_eq!(load_credential("nonexistent"), None);
     }
 
     #[test]
     fn test_load_credential_lifecycle() {
+        let _guard = LOCK.lock().unwrap();
         let dir = tempdir().unwrap();
         let cred_path = dir.path().join("api_token");
         fs::write(&cred_path, "super_secret_token_12345\n").unwrap();
@@ -67,6 +70,7 @@ mod tests {
 
     #[test]
     fn test_resolve_secret_fallback_to_env() {
+        let _guard = LOCK.lock().unwrap();
         env::remove_var("CREDENTIALS_DIRECTORY");
         env::set_var("TEST_FALLBACK_KEY", "env_secret_value");
         assert_eq!(

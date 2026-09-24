@@ -16,8 +16,15 @@ pub struct AppState {
     pub arbiter: Arc<Arbiter>,
     #[allow(dead_code)]
     pub preempt: Arc<PreemptCoordinator>,
-    #[allow(dead_code)]
     pub api_token: Option<String>,
+}
+
+fn check_auth(headers: &axum::http::HeaderMap, api_token: Option<&str>) -> bool {
+    let Some(expected) = api_token else { return true; };
+    headers.get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|auth| auth.strip_prefix("Bearer ").unwrap_or(auth).trim() == expected)
+        .unwrap_or(false)
 }
 
 pub async fn health_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -41,9 +48,14 @@ pub async fn models_handler() -> impl IntoResponse {
 
 pub async fn chat_completions_handler(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ChatCompletionRequest>,
 ) -> impl IntoResponse {
-    let memory_needed = 2 * 1024 * 1024 * 1024;
+    if !check_auth(&headers, state.api_token.as_deref()) {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Unauthorized" }))).into_response();
+    }
+    let memory_needed = state.arbiter.get_model(&req.model).await
+        .map(|m| m.estimated_memory_bytes).unwrap_or(512 * 1024 * 1024);
     let lease = match state
         .arbiter
         .acquire_lease(
@@ -88,8 +100,12 @@ pub async fn chat_completions_handler(
 
 pub async fn ollama_generate_handler(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    if !check_auth(&headers, state.api_token.as_deref()) {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Unauthorized" }))).into_response();
+    }
     let model = payload
         .get("model")
         .and_then(|v| v.as_str())
@@ -105,7 +121,8 @@ pub async fn ollama_generate_handler(
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
-    let memory_needed = 2 * 1024 * 1024 * 1024;
+    let memory_needed = state.arbiter.get_model(&model).await
+        .map(|m| m.estimated_memory_bytes).unwrap_or(512 * 1024 * 1024);
     let lease = match state
         .arbiter
         .acquire_lease(

@@ -111,7 +111,8 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // 4. HTTP Gateway Router & Server (FD 5 or standalone bind)
-    let api_token = creds::resolve_secret("INFERENCED_API_TOKEN", "gateway_api_token");
+    let api_token = creds::resolve_secret("INFERENCED_API_TOKEN", "gateway_api_token")
+        .or_else(|| creds::load_credential("api_token"));
     if api_token.is_some() {
         info!("Gateway API token configured via systemd-creds ($CREDENTIALS_DIRECTORY)");
     }
@@ -132,12 +133,15 @@ async fn main() -> anyhow::Result<()> {
 
     notify::notify_systemd_ready();
 
-    // Systemd Watchdog keepalive loop (pings every 10s for WatchdogSec=30s)
-    let watchdog_task = tokio::spawn(async {
+    // Systemd Watchdog keepalive loop (pings every 10s for WatchdogSec=30s if arbiter is responsive)
+    let arbiter_clone = arbiter.clone();
+    let watchdog_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
         loop {
             interval.tick().await;
-            notify::notify_systemd_watchdog();
+            if arbiter_clone.health_check().await {
+                notify::notify_systemd_watchdog();
+            }
         }
     });
 

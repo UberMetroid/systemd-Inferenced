@@ -66,7 +66,22 @@ fn resolve_freeze_path(path: &Path) -> PathBuf {
             path.join("cgroup.freeze")
         }
     } else {
-        Path::new(CGROUP_ROOT).join(path).join("cgroup.freeze")
+        let direct = Path::new(CGROUP_ROOT).join(path).join("cgroup.freeze");
+        if direct.exists() {
+            return direct;
+        }
+        if let Some(s) = path.to_str() {
+            if let Some((parent, _)) = s.split_once('-') {
+                let nested = Path::new(CGROUP_ROOT)
+                    .join(format!("{parent}.slice"))
+                    .join(path)
+                    .join("cgroup.freeze");
+                if nested.exists() {
+                    return nested;
+                }
+            }
+        }
+        direct
     }
 }
 

@@ -21,29 +21,15 @@ pub struct Arbiter {
 impl Arbiter {
     pub fn new(topology: HardwareTopology) -> Self {
         Self {
-            state: RwLock::new(ArbiterState {
-                topology,
-                leases: HashMap::new(),
-                registry: ModelRegistry::new(),
-            }),
+            state: RwLock::new(ArbiterState { topology, leases: HashMap::new(), registry: ModelRegistry::new() }),
         }
     }
 
-    pub async fn get_topology(&self) -> HardwareTopology {
-        self.state.read().await.topology.clone()
-    }
+    pub async fn get_topology(&self) -> HardwareTopology { self.state.read().await.topology.clone() }
+    pub async fn get_registry(&self) -> ModelRegistry { self.state.read().await.registry.clone() }
+    pub async fn list_leases(&self) -> Vec<ComputeLease> { self.state.read().await.leases.values().cloned().collect() }
+    pub async fn get_lease(&self, lease_id: LeaseId) -> Option<ComputeLease> { self.state.read().await.leases.get(&lease_id).cloned() }
 
-    pub async fn get_registry(&self) -> ModelRegistry {
-        self.state.read().await.registry.clone()
-    }
-
-    pub async fn list_leases(&self) -> Vec<ComputeLease> {
-        self.state.read().await.leases.values().cloned().collect()
-    }
-
-    pub async fn get_lease(&self, lease_id: LeaseId) -> Option<ComputeLease> {
-        self.state.read().await.leases.get(&lease_id).cloned()
-    }
 
     pub async fn register_model(&self, desc: ModelDescriptor) {
         self.state.write().await.registry.register(desc);
@@ -152,8 +138,14 @@ impl Arbiter {
             state.leases.retain(|_, l| l.is_active());
         }
 
-        let target_plane = &mut state.topology.planes[target_plane_idx];
-        target_plane.available_memory_bytes = target_plane.available_memory_bytes.saturating_sub(required_bytes);
+        let is_uma = state.topology.planes[target_plane_idx].kind == ComputePlaneKind::IntegratedUma;
+        state.topology.planes[target_plane_idx].available_memory_bytes =
+            state.topology.planes[target_plane_idx].available_memory_bytes.saturating_sub(required_bytes);
+        if is_uma {
+            if let Some(cpu) = state.topology.planes.iter_mut().find(|p| p.kind == ComputePlaneKind::CpuMatrixExtension) {
+                cpu.available_memory_bytes = cpu.available_memory_bytes.saturating_sub(required_bytes);
+            }
+        }
 
         let lease = ComputeLease::new(target_plane_id.clone(), required_bytes, priority, client_unit, client_pid);
         state.leases.insert(lease.id, lease.clone());
@@ -165,21 +157,20 @@ impl Arbiter {
         self.acquire_lease(req.priority, req.required_bytes, req.preferred_plane, req.client_unit, req.client_pid).await
     }
 
+    /// Health check verifying that the Arbiter state lock is responsive.
+    pub async fn health_check(&self) -> bool {
+        tokio::time::timeout(std::time::Duration::from_millis(500), async { self.state.read().await.topology.planes.len() }).await.is_ok()
+    }
+
     /// Release an existing compute lease, returning memory to the plane.
     pub async fn release_lease(&self, lease_id: LeaseId) -> Result<()> {
         let mut state = self.state.write().await;
         let ArbiterState { ref mut topology, ref mut leases, .. } = *state;
         let lease = leases.get_mut(&lease_id).ok_or_else(|| Error::LeaseNotFound(lease_id.to_string()))?;
-        if !lease.is_active() {
-            return Ok(());
-        }
+        if !lease.is_active() { return Ok(()); }
         lease.state = LeaseState::Expired;
-        let plane_id = lease.plane_id.clone();
-        let bytes = lease.allocated_memory_bytes;
-        if let Some(plane) = topology.planes.iter_mut().find(|p| p.id == plane_id) {
-            plane.available_memory_bytes = (plane.available_memory_bytes + bytes).min(plane.total_memory_bytes);
-        }
-        info!("Released compute lease {} on plane {}", lease_id, plane_id);
+        restore_plane_memory(topology, &lease.plane_id, lease.allocated_memory_bytes);
+        info!("Released compute lease {} on plane {}", lease_id, lease.plane_id);
         Ok(())
     }
 
@@ -187,19 +178,13 @@ impl Arbiter {
         let mut state = self.state.write().await;
         let ArbiterState { ref mut topology, ref mut leases, .. } = *state;
         let lease = leases.get_mut(&lease_id).ok_or_else(|| Error::LeaseNotFound(lease_id.to_string()))?;
-        if !lease.is_active() && lease.state != LeaseState::Preempted {
-            return Ok(());
-        }
+        if !lease.is_active() && lease.state != LeaseState::Preempted { return Ok(()); }
         let was_active = lease.is_active();
         lease.state = LeaseState::Revoked;
-        let plane_id = lease.plane_id.clone();
-        let bytes = lease.allocated_memory_bytes;
         if was_active {
-            if let Some(plane) = topology.planes.iter_mut().find(|p| p.id == plane_id) {
-                plane.available_memory_bytes = (plane.available_memory_bytes + bytes).min(plane.total_memory_bytes);
-            }
+            restore_plane_memory(topology, &lease.plane_id, lease.allocated_memory_bytes);
         }
-        info!("Revoked compute lease {} on plane {}", lease_id, plane_id);
+        info!("Revoked compute lease {} on plane {}", lease_id, lease.plane_id);
         Ok(())
     }
 
@@ -240,13 +225,19 @@ impl Arbiter {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct LeaseRequest {
-    pub priority: LeasePriority,
-    pub required_bytes: u64,
-    pub preferred_plane: Option<String>,
-    pub client_unit: Option<String>,
-    pub client_pid: Option<u32>,
+fn restore_plane_memory(topology: &mut HardwareTopology, plane_id: &str, bytes: u64) {
+    let is_uma = topology.planes.iter().find(|p| p.id == plane_id).map(|p| p.kind == ComputePlaneKind::IntegratedUma).unwrap_or(false);
+    if let Some(plane) = topology.planes.iter_mut().find(|p| p.id == plane_id) {
+        plane.available_memory_bytes = (plane.available_memory_bytes + bytes).min(plane.total_memory_bytes);
+    }
+    if is_uma {
+        if let Some(cpu) = topology.planes.iter_mut().find(|p| p.kind == ComputePlaneKind::CpuMatrixExtension) {
+            cpu.available_memory_bytes = (cpu.available_memory_bytes + bytes).min(cpu.total_memory_bytes);
+        }
+    }
 }
+
+pub use crate::lease::LeaseRequest;
 pub type LeaseGrant = ComputeLease;
 pub type LeaseError = Error;
+
