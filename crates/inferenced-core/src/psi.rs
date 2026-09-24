@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+tokio::task_local! {
+    pub static SIMULATED_PSI: PressureLevel;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PressureLevel {
     Normal,
@@ -31,8 +35,49 @@ impl Default for PressureMetrics {
 }
 
 impl PressureMetrics {
+    fn from_level(level: PressureLevel) -> Self {
+        match level {
+            PressureLevel::Critical => Self {
+                memory_some_avg10: 60.0,
+                memory_full_avg10: 25.0,
+                cpu_some_avg10: 10.0,
+                io_some_avg10: 5.0,
+                level,
+            },
+            PressureLevel::Elevated => Self {
+                memory_some_avg10: 20.0,
+                memory_full_avg10: 0.0,
+                cpu_some_avg10: 10.0,
+                io_some_avg10: 5.0,
+                level,
+            },
+            PressureLevel::Normal => Self {
+                memory_some_avg10: 0.0,
+                memory_full_avg10: 0.0,
+                cpu_some_avg10: 0.0,
+                io_some_avg10: 0.0,
+                level,
+            },
+        }
+    }
+
     /// Read real-time Linux kernel Pressure Stall Information (PSI).
     pub fn read_current() -> Self {
+        if let Ok(sim_lvl) = SIMULATED_PSI.try_with(|lvl| *lvl) {
+            return Self::from_level(sim_lvl);
+        }
+
+        if let Ok(sim) = std::env::var("INFERENCED_SIMULATE_PSI") {
+            let sim_lower = sim.to_ascii_lowercase();
+            if sim_lower == "critical" {
+                return Self::from_level(PressureLevel::Critical);
+            } else if sim_lower == "elevated" {
+                return Self::from_level(PressureLevel::Elevated);
+            } else if sim_lower == "normal" {
+                return Self::from_level(PressureLevel::Normal);
+            }
+        }
+
         let mem_some = Self::parse_psi_avg10("/proc/pressure/memory", "some").unwrap_or(0.0);
         let mem_full = Self::parse_psi_avg10("/proc/pressure/memory", "full").unwrap_or(0.0);
         let cpu_some = Self::parse_psi_avg10("/proc/pressure/cpu", "some").unwrap_or(0.0);

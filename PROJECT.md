@@ -37,16 +37,26 @@ systemd-inferenced is a 100% pure Rust unprivileged heterogeneous hardware arbit
 | 23 | Pure Rust Dependency Verification | `ldd` verification of binaries showing zero linkage to `libsystemd.so` or `libdbus-1.so` | M5 | Acceptance / R5 |
 | 24 | Live System & IPC Validation | Validate `varlinkctl info`, Unix stream filter piping, and Sentry triage emergency preemption | M5 | Acceptance / R2-R4 |
 | 25 | Comprehensive E2E Test Suite | 4-Tier requirement-driven opaque-box test suite + Tier 5 adversarial coverage hardening | E2E | Acceptance / R5 |
+| 26 | Cross-Architecture Netlink Portability | Replace inline asm with rustix raw socket + libc bind across x86_64, aarch64, riscv64 | M1_H2 | R1 (Hardening) |
+| 27 | Embedded Standalone Inhibitor Fallback | 3-tier fallback (systemd-inhibit -> flock lockfile -> Unix bus) + child zombie reaping | M2_H2 | R2 (Hardening) |
+| 28 | Adversarial Stress & Fault Injection | PSI saturation churn, UMA preemption/thaw storms, SCM_RIGHTS fanout, rogue disconnects | M3_H2 | R3 (Hardening) |
+| 29 | Zero-Warning Compiler Hygiene & LOC | 0 warnings on all targets, <= 256 LOC per file repository-wide, 100% pure Rust | M4_H2 | R4 (Hardening) |
+| 30 | Adversarial Multi-Agent Gate | Reviewers, Challengers, and Forensic Auditor verification gate | M5_H2 | Acceptance |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Core Compute & Memory Engine | `crates/inferenced-core` (discovery, arbiter, preempt coordinator, memfd SCM_RIGHTS, paging) | none | DONE |
-| M2 | Systemd Daemon, Varlink & Sentry | `crates/inferenced-daemon` (socket activation FDs 3..5, abstract notify, Varlink server, Sentry enclave) | M1 | DONE |
-| M3 | Expanded CLI Suite & Unix Filter | `crates/inferenctl` (18 commands, stream filter `exec`, global flags, modular <= 180 LOC design) | M1, M2 | DONE |
-| M4 | Packaging, Installer & Docs | `install/`, `systemd/`, `docs/`, `website/` (install/uninstall scripts, unit checks, docs, web) | M2, M3 | DONE |
-| M5 | Final Integration & Live Verification | Pass 100% E2E test suite (Tiers 1-4), Tier 5 adversarial hardening, live validation (Varlink, Stream, Sentry) | M1, M2, M3, M4, E2E | DONE |
-| E2E | E2E Testing Track | Comprehensive opaque-box test suite (Tiers 1-4) in `qa/`, test runner, `TEST_READY.md` | none (parallel) | DONE |
+| M1 | Core Compute & Memory Engine | `crates/inferenced-core` | none | DONE |
+| M2 | Systemd Daemon, Varlink & Sentry | `crates/inferenced-daemon` | M1 | DONE |
+| M3 | Expanded CLI Suite & Unix Filter | `crates/inferenctl` | M1, M2 | DONE |
+| M4 | Packaging, Installer & Docs | `install/`, `systemd/`, `docs/`, `website/` | M2, M3 | DONE |
+| M5 | Final Integration & Live Verification | Pass 100% E2E test suite (Tiers 1-4), Tier 5 adversarial hardening | M1-M4, E2E | DONE |
+| E2E | E2E Testing Track | Comprehensive opaque-box test suite (Tiers 1-4) in `qa/`, `TEST_READY.md` | none (parallel) | DONE |
+| M1_H2 | Core Netlink Portability (R1) | `crates/inferenced-core/src/netlink.rs`, `Cargo.toml` | none | DONE |
+| M2_H2 | Daemon Inhibitor Fallback (R2) | `crates/inferenced-daemon/src/inhibit.rs` | none | DONE |
+| M3_H2 | Adversarial Stress & Fault Injection (R3) | `crates/inferenced-core/src/psi.rs`, `qa/edge/**` | M1_H2, M2_H2 | DONE |
+| M4_H2 | Compiler Hygiene & LOC Verification (R4) | Repository-wide compiler check, LOC verification, pure Rust check | M3_H2 | DONE |
+| M5_H2 | Final Verification Gate | Reviewers (2), Challengers (2), Forensic Auditor (1) | M1_H2-M4_H2 | DONE |
 
 ## Interface Contracts
 ### `inferenced-core` ↔ `inferenced-daemon`
@@ -56,8 +66,10 @@ systemd-inferenced is a 100% pure Rust unprivileged heterogeneous hardware arbit
 - `PreemptCoordinator::preempt_lease(&self, lease_id: LeaseId) -> Result<(), PreemptError>`: Emits cooperative yield with 250ms timeout; triggers `cgroup.freeze` or `SIGSTOP` on expiration.
 - `MemfdPaging::create_sealed_model(name: &str, data: &[u8]) -> Result<OwnedFd, PagingError>`: Creates sealed `memfd` and applies `madvise`.
 - `FdLease::send_fd(socket: &UnixDatagram, fd: BorrowedFd) -> Result<(), FdError>`: SCM_RIGHTS passing.
+- `netlink::open_uevent_socket() -> Result<OwnedFd>`: Open and bind portable Netlink KOBJECT_UEVENT multicast listener without inline asm.
 
 ### `inferenced-daemon` ↔ `inferenctl` / Clients
+- **Inhibitor Fallback**: Primary `systemd-inhibit`, secondary file descriptor advisory lock via `rustix::fs::flock` on `/run/systemd-inferenced/inhibit.lock`, tertiary Unix bus socket.
 - **Varlink IPC (`io.systemd.inferenced1`)**: Over `/run/systemd-inferenced/io.systemd.inferenced1` (FD 3):
   - `io.systemd.inferenced1.GetStatus() -> (status: Status)`
   - `io.systemd.inferenced1.ListPlanes() -> (planes: []ComputePlane)`
@@ -74,9 +86,8 @@ systemd-inferenced is a 100% pure Rust unprivileged heterogeneous hardware arbit
 ## Code Layout
 - Every source file MUST strictly contain <= 256 lines of code.
 - Zero C-library dependencies (no `libsystemd.so`, no `libdbus-1.so`).
-- Dedicated file ownership:
-  - M1 owns: `crates/inferenced-core/src/**`
-  - M2 owns: `crates/inferenced-daemon/src/**`
-  - M3 owns: `crates/inferenctl/src/**`
-  - M4 owns: `install/**`, `systemd/**`, `docs/**`, `website/**`
-  - E2E owns: `qa/**`
+- Dedicated file ownership for Round 2:
+  - Worker M1_H2 exclusively owns: `crates/inferenced-core/src/netlink.rs`, `crates/inferenced-core/Cargo.toml`
+  - Worker M2_H2 exclusively owns: `crates/inferenced-daemon/src/inhibit.rs`
+  - Worker M3_H2 exclusively owns: `crates/inferenced-core/src/psi.rs`, `qa/edge/psi_churn_stress_tests.rs`, `qa/edge/uma_thaw_storm_tests.rs`, `qa/edge/scm_rights_fanout_tests.rs`, `qa/edge/rogue_disconnect_tests.rs`, `qa/edge/mod.rs`
+  - Reviewers / Challengers / Auditor: Read-only inspection across all workspace files.

@@ -45,3 +45,12 @@
 - **Tier 3**: Pairwise coverage of major feature combinations (10+ interaction tests)
 - **Tier 4**: 5 realistic end-to-end workload scenarios
 - **Total Minimum**: >= 115 tests passing across `cargo test --workspace`.
+
+## Round 2 Adversarial Stress & Fault Injection Suites (Tier 5 / Hardening)
+| Suite | Target Module | Scenario | Failure Injected | Invariant Verified |
+|---|---|---|---|---|
+| `psi_churn_stress_tests` | `inferenced-core::psi` | 50 concurrent tasks leasing under critical PSI | `INFERENCED_SIMULATE_PSI=critical` | Non-emergency throttled (`BusSaturation`), EmergencyTriage permitted, 0 leaks |
+| `uma_thaw_storm_tests` | `inferenced-core::arbiter` | 8-task simultaneous thawing storm & 4 preemptions | High-concurrency race condition | Dual UMA/CPU accounting invariant `uma.available == cpu.available` |
+| `scm_rights_fanout_tests` | `inferenced-core::fd_lease` | 20-client concurrent sealed memfd fanout | Write mutation attempt (`EPERM`) | Zero file-descriptor leaks in host `/proc/self/fd`, memory madvise integrity |
+| `rogue_disconnect_tests` | `inferenced-daemon::varlink` | 30 rogue client socket drops during active inference | Abrupt SIGKILL / connection reset | Zero zombie leases, 100% memory slice recovery on server |
+

@@ -3,9 +3,11 @@ use rustix::fs::{fcntl_getfd, fcntl_setfd, FdFlags};
 use rustix::net::{getsockname, SocketAddrAny};
 use std::env;
 use std::os::unix::net::UnixListener as StdUnixListener;
+use std::sync::Mutex;
 use tempfile::tempdir;
 
 const SD_LISTEN_FDS_START: i32 = 3;
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_activation_cloexec_flag_enforcement() {
@@ -28,6 +30,7 @@ fn test_activation_cloexec_flag_enforcement() {
 
 #[test]
 fn test_activation_environment_pid_matching() {
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let my_pid = std::process::id();
 
     // Matching PID
@@ -79,6 +82,7 @@ fn test_activation_socket_family_inspection() {
 
 #[test]
 fn test_activation_zero_fds_handled_gracefully() {
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     env::set_var("LISTEN_PID", std::process::id().to_string());
     env::set_var("LISTEN_FDS", "0");
 

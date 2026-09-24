@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
-use rustix::fd::{FromRawFd, OwnedFd};
+use rustix::fd::{AsRawFd, OwnedFd};
+use rustix::net::{netlink, socket_with, AddressFamily, SocketFlags, SocketType};
 use std::collections::HashMap;
-use std::os::raw::c_int;
 
 /// Parsed kernel device event from Linux Netlink KOBJECT_UEVENT.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,126 +66,42 @@ impl Uevent {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct SockAddrNl {
-    pub nl_family: u16,
-    pub nl_pad: u16,
-    pub nl_pid: u32,
-    pub nl_groups: u32,
-}
-
-/// Linux kernel socket constants: AF_NETLINK = 16, SOCK_RAW = 3, NETLINK_KOBJECT_UEVENT = 15.
-const AF_NETLINK: c_int = 16;
-const SOCK_RAW: c_int = 3;
-const SOCK_NONBLOCK: c_int = 0x800;
-const SOCK_CLOEXEC: c_int = 0x80000;
-const NETLINK_KOBJECT_UEVENT: c_int = 15;
-
 /// Open and bind a non-blocking Netlink KOBJECT_UEVENT multicast listener socket.
 pub fn open_uevent_socket() -> Result<OwnedFd> {
-    unsafe {
-        // Syscall socket(AF_NETLINK, SOCK_RAW | SOCK_NONBLOCK | SOCK_CLOEXEC, NETLINK_KOBJECT_UEVENT)
-        let fd_raw = libc_syscall_socket(
-            AF_NETLINK,
-            SOCK_RAW | SOCK_NONBLOCK | SOCK_CLOEXEC,
-            NETLINK_KOBJECT_UEVENT,
-        );
-        if fd_raw < 0 {
-            return Err(Error::Systemd("Failed to create AF_NETLINK socket".into()));
-        }
+    let fd = socket_with(
+        AddressFamily::NETLINK,
+        SocketType::RAW,
+        SocketFlags::NONBLOCK | SocketFlags::CLOEXEC,
+        Some(netlink::KOBJECT_UEVENT),
+    )
+    .map_err(|e| Error::Systemd(format!("Failed to create AF_NETLINK socket: {e}")))?;
 
-        let addr = SockAddrNl {
-            nl_family: AF_NETLINK as u16,
-            nl_pad: 0,
-            nl_pid: 0,       // Let kernel assign port ID
-            nl_groups: 1,    // Multicast group 1: kernel uevents
-        };
+    let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
+    addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
+    addr.nl_pid = 0;
+    addr.nl_groups = 1;
 
-        let res = libc_syscall_bind(
-            fd_raw,
-            &addr as *const _ as *const _,
-            std::mem::size_of::<SockAddrNl>() as u32,
-        );
+    let res = unsafe {
+        libc::bind(
+            fd.as_raw_fd(),
+            &addr as *const _ as *const libc::sockaddr,
+            std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
+        )
+    };
 
-        if res < 0 {
-            let _ = rustix::io::close(fd_raw);
-            return Err(Error::Systemd("Failed to bind netlink socket to group 1".into()));
-        }
-
-        Ok(OwnedFd::from_raw_fd(fd_raw))
+    if res < 0 {
+        return Err(Error::Systemd(format!(
+            "Failed to bind netlink socket to group 1: {}",
+            std::io::Error::last_os_error()
+        )));
     }
-}
 
-/// Direct Linux syscall wrappers (pure Rust, zero C runtime dependencies).
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-unsafe fn libc_syscall_socket(domain: c_int, type_: c_int, protocol: c_int) -> c_int {
-    let ret: isize;
-    std::arch::asm!(
-        "syscall",
-        inlateout("rax") 41isize => ret,
-        in("rdi") domain,
-        in("rsi") type_,
-        in("rdx") protocol,
-        lateout("rcx") _,
-        lateout("r11") _,
-        options(nostack)
-    );
-    ret as c_int
-}
-
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-unsafe fn libc_syscall_bind(sockfd: c_int, addr: *const std::ffi::c_void, addrlen: u32) -> c_int {
-    let ret: isize;
-    std::arch::asm!(
-        "syscall",
-        inlateout("rax") 49isize => ret,
-        in("rdi") sockfd,
-        in("rsi") addr,
-        in("rdx") addrlen,
-        lateout("rcx") _,
-        lateout("r11") _,
-        options(nostack)
-    );
-    ret as c_int
-}
-
-#[cfg(target_arch = "aarch64")]
-#[inline(always)]
-unsafe fn libc_syscall_socket(domain: c_int, type_: c_int, protocol: c_int) -> c_int {
-    let ret: isize;
-    std::arch::asm!(
-        "svc #0",
-        inlateout("x8") 198isize => _,
-        inlateout("x0") domain as isize => ret,
-        in("x1") type_ as isize,
-        in("x2") protocol as isize,
-        options(nostack)
-    );
-    ret as c_int
-}
-
-#[cfg(target_arch = "aarch64")]
-#[inline(always)]
-unsafe fn libc_syscall_bind(sockfd: c_int, addr: *const std::ffi::c_void, addrlen: u32) -> c_int {
-    let ret: isize;
-    std::arch::asm!(
-        "svc #0",
-        inlateout("x8") 200isize => _,
-        inlateout("x0") sockfd as isize => ret,
-        in("x1") addr as usize,
-        in("x2") addrlen as usize,
-        options(nostack)
-    );
-    ret as c_int
+    Ok(fd)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustix::fd::AsRawFd;
 
     #[test]
     fn test_parse_drm_add_uevent() {
@@ -207,10 +123,37 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_device_subsystems() {
+        let accel_raw = b"add@/devices/pci/accel/accel0\0SUBSYSTEM=accel\0DEVNAME=/dev/accel/accel0\0";
+        let uevent = Uevent::parse(accel_raw).unwrap();
+        assert!(uevent.is_compute_device());
+
+        let hailo_raw = b"add@/devices/pci/misc/hailo0\0SUBSYSTEM=misc\0DEVNAME=/dev/hailo0\0";
+        let uevent = Uevent::parse(hailo_raw).unwrap();
+        assert!(uevent.is_compute_device());
+
+        let kfd_raw = b"add@/devices/virtual/kfd\0SUBSYSTEM=kfd\0";
+        let uevent = Uevent::parse(kfd_raw).unwrap();
+        assert!(uevent.is_compute_device());
+
+        let input_raw = b"add@/devices/input/input0\0SUBSYSTEM=input\0DEVNAME=/dev/input/event0\0";
+        let uevent = Uevent::parse(input_raw).unwrap();
+        assert!(!uevent.is_compute_device());
+    }
+
+    #[test]
+    fn test_parse_malformed_uevent() {
+        assert!(Uevent::parse(b"").is_none());
+        assert!(Uevent::parse(b"malformed_without_delimiter").is_none());
+        assert!(Uevent::parse(b"\0\0").is_none());
+    }
+
+    #[test]
     fn test_open_uevent_socket_lifecycle() {
-        // Will succeed if user has network/netlink permissions (or CAP_NET_ADMIN / standard user)
         if let Ok(fd) = open_uevent_socket() {
             assert!(fd.as_raw_fd() >= 0);
+            let flags = rustix::fs::fcntl_getfl(&fd).expect("fcntl_getfl should succeed");
+            assert!(flags.contains(rustix::fs::OFlags::NONBLOCK));
         }
     }
 }
