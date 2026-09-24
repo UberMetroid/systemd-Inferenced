@@ -57,7 +57,7 @@ async fn test_varlink_server_get_status_and_list_planes() {
 
     // 1. GetInfo
     let info_resp = varlink_call(&mut client, "org.varlink.service.GetInfo", json!({})).await;
-    assert_eq!(info_resp["parameters"]["vendor"], "systemd-inferenced");
+    assert_eq!(info_resp["parameters"]["product"], "inferenced");
     assert!(info_resp["parameters"]["interfaces"]
         .as_array()
         .unwrap()

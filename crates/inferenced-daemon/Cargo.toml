@@ -1,5 +1,5 @@
 [package]
-name = "systemd-inferenced"
+name = "inferenced-daemon"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "systemd-inferenced"
+name = "inferenced"
 path = "src/main.rs"
 
 [dependencies]

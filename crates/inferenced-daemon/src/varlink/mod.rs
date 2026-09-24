@@ -17,7 +17,9 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tracing::{error, info};
 
-pub const DEFAULT_VARLINK_PATH: &str = "/run/systemd-inferenced/io.systemd.inferenced1";
+pub const DEFAULT_VARLINK_PATH: &str = "/run/syntrop/io.syntrop.Inference1";
+#[allow(dead_code)]
+pub const LEGACY_VARLINK_PATH: &str = "/run/systemd-inferenced/io.systemd.inferenced1";
 
 pub async fn run_varlink_listener(
     listener: UnixListener,

@@ -5,7 +5,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 
 #[allow(dead_code)]
-pub const DEFAULT_SOCKET_PATH: &str = "/run/systemd-inferenced/io.systemd.inferenced1";
+pub const DEFAULT_SOCKET_PATH: &str = "/run/syntrop/io.syntrop.Inference1";
 
 pub struct VarlinkClient {
     stream: UnixStream,
@@ -15,7 +15,7 @@ pub struct VarlinkClient {
 impl VarlinkClient {
     pub fn connect(socket_path: impl AsRef<Path>) -> Result<Self> {
         let stream = UnixStream::connect(socket_path.as_ref()).with_context(|| {
-            format!("Failed to connect to systemd-inferenced at {:?}", socket_path.as_ref())
+            format!("Failed to connect to inferenced at {:?}", socket_path.as_ref())
         })?;
         let reader = BufReader::new(stream.try_clone()?);
         Ok(Self { stream, reader })
@@ -31,7 +31,7 @@ impl VarlinkClient {
         let mut buf = Vec::new();
         (&mut self.reader).take(1024 * 1024).read_until(0, &mut buf)?;
         if buf.is_empty() {
-            bail!("Connection closed by systemd-inferenced daemon");
+            bail!("Connection closed by inferenced daemon");
         }
         if let Some(&0) = buf.last() {
             buf.pop();

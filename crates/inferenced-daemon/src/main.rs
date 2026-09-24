@@ -20,7 +20,7 @@ use tokio::net::TcpListener;
 use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
-#[command(name = "systemd-inferenced")]
+#[command(name = "inferenced")]
 #[command(about = "Heterogeneous AI Hardware Arbiter and Model Lifecycle Broker")]
 #[command(version)]
 struct Cli {
@@ -30,13 +30,13 @@ struct Cli {
     #[arg(short, long, default_value = "127.0.0.1:11434")]
     bind: SocketAddr,
 
-    #[arg(long, default_value = "/run/systemd-inferenced/io.systemd.inferenced1")]
+    #[arg(long, default_value = "/run/syntrop/io.syntrop.Inference1")]
     varlink_socket: PathBuf,
 
-    #[arg(long, default_value = "/run/systemd-inferenced/sentry.sock")]
+    #[arg(long, default_value = "/run/syntrop/sentry.sock")]
     sentry_socket: PathBuf,
 
-    #[arg(long, default_value = "/run/systemd-inferenced/fd.sock")]
+    #[arg(long, default_value = "/run/syntrop/fd.sock")]
     fd_socket: PathBuf,
 }
 
@@ -45,12 +45,12 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "systemd_inferenced=info,inferenced_core=info".into()),
+                .unwrap_or_else(|_| "inferenced=info,systemd_inferenced=info,inferenced_core=info".into()),
         )
         .init();
 
     let cli = Cli::parse();
-    info!("Starting systemd-inferenced daemon in pure Rust...");
+    info!("Starting inferenced daemon in pure Rust...");
 
     let mut activated = check_and_adopt_sockets()?;
 
@@ -210,7 +210,7 @@ async fn main() -> anyhow::Result<()> {
     watchdog_task.abort();
     inhibitor.quiesce_for_sleep(&arbiter).await;
     notify::notify_systemd_stopping();
-    info!("systemd-inferenced daemon terminated cleanly.");
+    info!("inferenced daemon terminated cleanly.");
     Ok(())
 }
 

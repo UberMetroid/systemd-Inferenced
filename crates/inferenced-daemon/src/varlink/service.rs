@@ -121,12 +121,13 @@ error ModelNotFound (model: string)
 
 pub fn handle_get_info() -> VarlinkReply {
     VarlinkReply::ok(json!({
-        "vendor": "systemd-inferenced",
-        "product": "systemd-inferenced",
+        "vendor": "Syntropd Project",
+        "product": "inferenced",
         "version": "0.1.0",
         "url": "https://github.com/syntropd/inferenced",
         "interfaces": [
             "org.varlink.service",
+            "io.syntrop.Inference1",
             "io.systemd.inferenced1"
         ]
     }))
@@ -141,7 +142,7 @@ pub fn handle_get_interface_description(params: Option<&Value>) -> VarlinkReply 
         Some("org.varlink.service") => VarlinkReply::ok(json!({
             "description": ORG_VARLINK_SERVICE_IDL
         })),
-        Some("io.systemd.inferenced1") => VarlinkReply::ok(json!({
+        Some("io.syntrop.Inference1") | Some("io.systemd.inferenced1") => VarlinkReply::ok(json!({
             "description": IO_SYSTEMD_INFERENCED1_IDL
         })),
         Some(unknown) => VarlinkReply::error(

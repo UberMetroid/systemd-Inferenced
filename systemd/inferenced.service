@@ -1,0 +1,64 @@
+[Unit]
+Description=Heterogeneous AI Hardware Arbiter and Model Lifecycle Broker
+Documentation=https://github.com/syntropd/inferenced
+After=network.target local-fs.target
+Requires=inferenced.socket
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/inferenced
+Restart=on-failure
+RestartSec=3s
+WatchdogSec=30s
+Slice=ai.slice
+
+# Security & Sandboxing
+User=inferenced
+Group=inferenced
+SupplementaryGroups=render video sentry
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Delegate=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+AmbientCapabilities=CAP_KILL
+CapabilityBoundingSet=CAP_KILL
+
+# Directories
+RuntimeDirectory=syntrop
+RuntimeDirectoryMode=0755
+ConfigurationDirectory=syntrop/inferenced.conf.d
+StateDirectory=inferenced
+LogsDirectory=inferenced
+
+# Linux Device Permissions (DRM & Accel)
+DeviceAllow=/dev/dri/renderD* rw
+DeviceAllow=/dev/accel/* rw
+DeviceAllow=/dev/hailo* rw
+DeviceAllow=/dev/kfd rw
+
+# cgroup v2 & systemd-oomd Protection
+ManagedOOMPreference=avoid
+OOMScoreAdjust=-900
+OOMPolicy=stop
+
+# Logging & systemd-journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=inferenced
+
+# Crash Diagnostics & systemd-coredump
+LimitCORE=infinity
+Environment=RUST_BACKTRACE=1
+
+[Install]
+WantedBy=multi-user.target
+Alias=systemd-inferenced.service

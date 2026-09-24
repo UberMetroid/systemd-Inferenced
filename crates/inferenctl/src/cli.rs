@@ -3,13 +3,13 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "inferenctl")]
-#[command(about = "Control and inspect systemd-inferenced hardware arbitration and model residency")]
+#[command(about = "Control and inspect inferenced hardware arbitration and model residency")]
 #[command(version)]
 pub struct Cli {
-    #[arg(long, default_value = "/run/systemd-inferenced/io.systemd.inferenced1", global = true)]
+    #[arg(long, default_value = "/run/syntrop/io.syntrop.Inference1", global = true)]
     pub socket: PathBuf,
 
-    #[arg(long, default_value = "/run/systemd-inferenced/sentry.sock", global = true)]
+    #[arg(long, default_value = "/run/syntrop/sentry.sock", global = true)]
     pub sentry_socket: PathBuf,
 
     #[arg(short, long, default_value = "/etc/systemd/inferenced.conf", global = true)]

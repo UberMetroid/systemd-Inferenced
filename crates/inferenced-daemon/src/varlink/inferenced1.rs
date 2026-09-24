@@ -15,38 +15,32 @@ pub async fn handle_method(
     active_leases: &mut Vec<LeaseId>,
     peer_info: Option<&inferenced_core::PeerInfo>,
 ) -> Option<VarlinkReply> {
-    match method {
-        "io.systemd.inferenced1.GetStatus" | "io.systemd.inferenced1.GetInfo" => {
-            Some(handle_get_status(arbiter).await)
-        }
-        "io.systemd.inferenced1.ListPlanes" => Some(handle_list_planes(arbiter).await),
-        "io.systemd.inferenced1.GetTopology" => Some(handle_get_topology(arbiter).await),
-        "io.systemd.inferenced1.GetPressure" => Some(handle_get_pressure()),
-        "io.systemd.inferenced1.AcquireLease" => {
+    let sub = method
+        .strip_prefix("io.syntrop.Inference1.")
+        .or_else(|| method.strip_prefix("io.systemd.inferenced1."))?;
+
+    match sub {
+        "GetStatus" | "GetInfo" => Some(handle_get_status(arbiter).await),
+        "ListPlanes" | "ListDevices" => Some(handle_list_planes(arbiter).await),
+        "GetTopology" => Some(handle_get_topology(arbiter).await),
+        "GetPressure" => Some(handle_get_pressure()),
+        "AcquireLease" => {
             Some(leases::handle_acquire_lease(params, arbiter, active_leases, peer_info).await)
         }
-        "io.systemd.inferenced1.ReleaseLease" => {
+        "ReleaseLease" => {
             Some(leases::handle_release_lease(params, arbiter, active_leases).await)
         }
-        "io.systemd.inferenced1.Yield" => Some(leases::handle_yield(params, arbiter).await),
-        "io.systemd.inferenced1.Freeze" | "io.systemd.inferenced1.FreezeLease" => {
-            Some(leases::handle_freeze(params, arbiter).await)
-        }
-        "io.systemd.inferenced1.Thaw" | "io.systemd.inferenced1.ThawLease" => {
-            Some(leases::handle_thaw(params, arbiter).await)
-        }
-        "io.systemd.inferenced1.ListLeases" => Some(leases::handle_list_leases(arbiter).await),
-        "io.systemd.inferenced1.ListModels" => Some(models::handle_list_models(arbiter).await),
-        "io.systemd.inferenced1.RegisterModel" => {
+        "Yield" => Some(leases::handle_yield(params, arbiter).await),
+        "Freeze" | "FreezeLease" => Some(leases::handle_freeze(params, arbiter).await),
+        "Thaw" | "ThawLease" => Some(leases::handle_thaw(params, arbiter).await),
+        "ListLeases" => Some(leases::handle_list_leases(arbiter).await),
+        "ListModels" => Some(models::handle_list_models(arbiter).await),
+        "RegisterModel" => {
             Some(models::handle_register_model(params, arbiter).await)
         }
-        "io.systemd.inferenced1.EvictModel" => {
-            Some(models::handle_evict_model(params, arbiter).await)
-        }
-        "io.systemd.inferenced1.PinModel" => {
-            Some(models::handle_pin_model(params, arbiter).await)
-        }
-        "io.systemd.inferenced1.StreamInference" => {
+        "EvictModel" => Some(models::handle_evict_model(params, arbiter).await),
+        "PinModel" => Some(models::handle_pin_model(params, arbiter).await),
+        "StreamInference" => {
             handle_stream_inference(params, arbiter, writer).await;
             None
         }
