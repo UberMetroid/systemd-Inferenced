@@ -53,7 +53,29 @@ _inferenctl "$@"
 "#);
         }
         "fish" => {
-            eprintln!("Unsupported shell: fish");
+            println!("{}", r#"# fish completion for inferenctl
+complete -c inferenctl -f
+complete -c inferenctl -n "__fish_use_subcommand" -a "status" -d "Display daemon operational health and compute planes"
+complete -c inferenctl -n "__fish_use_subcommand" -a "planes" -d "List discovered compute planes and memory pools"
+complete -c inferenctl -n "__fish_use_subcommand" -a "leases" -d "Display active resource leases"
+complete -c inferenctl -n "__fish_use_subcommand" -a "monitor" -d "Stream real-time Linux PSI pressure"
+complete -c inferenctl -n "__fish_use_subcommand" -a "exec" -d "Composable Unix stream filter"
+complete -c inferenctl -n "__fish_use_subcommand" -a "freeze" -d "Freeze an active compute lease"
+complete -c inferenctl -n "__fish_use_subcommand" -a "thaw" -d "Resume a frozen compute lease"
+complete -c inferenctl -n "__fish_use_subcommand" -a "models" -d "List registered models"
+complete -c inferenctl -n "__fish_use_subcommand" -a "register" -d "Register a local model file"
+complete -c inferenctl -n "__fish_use_subcommand" -a "warm" -d "Pre-fault and warm model pages"
+complete -c inferenctl -n "__fish_use_subcommand" -a "pin" -d "Pin a model for emergency triage"
+complete -c inferenctl -n "__fish_use_subcommand" -a "evict" -d "Evict a model from accelerator memory"
+complete -c inferenctl -n "__fish_use_subcommand" -a "cat-config" -d "Print parsed global configuration"
+complete -c inferenctl -n "__fish_use_subcommand" -a "check-config" -d "Validate configuration syntax"
+complete -c inferenctl -n "__fish_use_subcommand" -a "dump" -d "Dump complete internal state as JSON"
+complete -c inferenctl -n "__fish_use_subcommand" -a "inspect" -d "Inspect compute plane attributes"
+complete -c inferenctl -n "__fish_use_subcommand" -a "test-triage" -d "Send synthetic Sentry diagnostic ping"
+complete -c inferenctl -n "__fish_use_subcommand" -a "benchmark" -d "Execute throughput and latency benchmarks"
+complete -c inferenctl -n "__fish_use_subcommand" -a "completions" -d "Generate shell completion scripts"
+complete -c inferenctl -n "__fish_use_subcommand" -a "man" -d "Output man page in troff format"
+"#);
         }
         _ => {
             eprintln!("Unsupported shell: {}. Supported shells: bash, zsh, fish", shell);

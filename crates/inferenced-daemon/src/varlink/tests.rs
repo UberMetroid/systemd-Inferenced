@@ -98,6 +98,62 @@ async fn test_varlink_server_get_status_and_list_planes() {
     let lease_id = acq_resp["parameters"]["lease_id"].as_str().unwrap();
     assert!(!lease_id.is_empty());
 
+    // 6. FreezeLease and ThawLease
+    let freeze_resp = varlink_call(
+        &mut client,
+        "io.systemd.inferenced1.FreezeLease",
+        json!({ "lease_id": lease_id }),
+    )
+    .await;
+    assert!(freeze_resp["parameters"].is_object());
+
+    let thaw_resp = varlink_call(
+        &mut client,
+        "io.systemd.inferenced1.ThawLease",
+        json!({ "lease_id": lease_id }),
+    )
+    .await;
+    assert!(thaw_resp["parameters"].is_object());
+
+    // 7. RegisterModel, ListModels, PinModel, EvictModel
+    let reg_resp = varlink_call(
+        &mut client,
+        "io.systemd.inferenced1.RegisterModel",
+        json!({
+            "id": "model-llama-test",
+            "format": "GGUF",
+            "path": "/models/llama.gguf",
+            "estimated_bytes": 4294967296u64,
+        }),
+    )
+    .await;
+    assert!(reg_resp["parameters"].is_object());
+
+    let list_models_resp = varlink_call(&mut client, "io.systemd.inferenced1.ListModels", json!({})).await;
+    let models = list_models_resp["parameters"]["models"].as_array().unwrap();
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0]["id"], "model-llama-test");
+
+    let pin_resp = varlink_call(
+        &mut client,
+        "io.systemd.inferenced1.PinModel",
+        json!({
+            "id": "model-llama-test",
+            "plane": "plane-varlink-test",
+        }),
+    )
+    .await;
+    assert!(pin_resp["parameters"].is_object());
+
+    let evict_resp = varlink_call(
+        &mut client,
+        "io.systemd.inferenced1.EvictModel",
+        json!({ "id": "model-llama-test" }),
+    )
+    .await;
+    assert!(evict_resp["parameters"].is_object());
+
+    // 8. ReleaseLease
     let rel_resp = varlink_call(
         &mut client,
         "io.systemd.inferenced1.ReleaseLease",

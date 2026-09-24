@@ -156,3 +156,34 @@ async fn test_preempt_thaw_preempted_lease_memory_safety() {
     let topo_final = arbiter.get_topology().await;
     assert_eq!(topo_final.planes[0].available_memory_bytes, total_bytes);
 }
+
+#[tokio::test]
+async fn test_preempt_revoke_preempted_lease_no_double_reclaim() {
+    let total_bytes = 4 * 1024 * 1024 * 1024;
+    let arbiter = make_test_arbiter(total_bytes);
+
+    let batch = arbiter
+        .acquire_lease(LeasePriority::Batch, total_bytes, None, None, None)
+        .await
+        .unwrap();
+
+    let interactive = arbiter
+        .acquire_lease(LeasePriority::Interactive, total_bytes, None, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(arbiter.get_lease(batch.id).await.unwrap().state, LeaseState::Preempted);
+    let topo_mid = arbiter.get_topology().await;
+    assert_eq!(topo_mid.planes[0].available_memory_bytes, 0);
+
+    // Revoking preempted lease must NOT double-reclaim memory
+    arbiter.revoke_lease(batch.id).await.unwrap();
+    let topo_after_revoke = arbiter.get_topology().await;
+    assert_eq!(topo_after_revoke.planes[0].available_memory_bytes, 0);
+    assert_eq!(arbiter.get_lease(batch.id).await.unwrap().state, LeaseState::Revoked);
+
+    // Releasing interactive lease restores memory up to total_bytes exactly
+    arbiter.release_lease(interactive.id).await.unwrap();
+    let topo_final = arbiter.get_topology().await;
+    assert_eq!(topo_final.planes[0].available_memory_bytes, total_bytes);
+}

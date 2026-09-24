@@ -68,8 +68,9 @@ fn test_cli_completions_fish() {
     let bin = find_inferenctl();
     let out = Command::new(&bin).args(["completions", "fish"]).output().unwrap();
     assert!(out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("Unsupported shell: fish"));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("# fish completion for inferenctl"));
+    assert!(stdout.contains("complete -c inferenctl"));
 }
 
 #[test]

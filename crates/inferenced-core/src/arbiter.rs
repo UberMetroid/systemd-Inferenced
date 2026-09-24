@@ -190,11 +190,14 @@ impl Arbiter {
         if !lease.is_active() && lease.state != LeaseState::Preempted {
             return Ok(());
         }
+        let was_active = lease.is_active();
         lease.state = LeaseState::Revoked;
         let plane_id = lease.plane_id.clone();
         let bytes = lease.allocated_memory_bytes;
-        if let Some(plane) = topology.planes.iter_mut().find(|p| p.id == plane_id) {
-            plane.available_memory_bytes = (plane.available_memory_bytes + bytes).min(plane.total_memory_bytes);
+        if was_active {
+            if let Some(plane) = topology.planes.iter_mut().find(|p| p.id == plane_id) {
+                plane.available_memory_bytes = (plane.available_memory_bytes + bytes).min(plane.total_memory_bytes);
+            }
         }
         info!("Revoked compute lease {} on plane {}", lease_id, plane_id);
         Ok(())
@@ -217,14 +220,9 @@ impl Arbiter {
     pub async fn thaw_lease(&self, lease_id: LeaseId) -> Result<()> {
         let mut state = self.state.write().await;
         let ArbiterState { ref mut topology, ref mut leases, .. } = *state;
-        let lease = leases
-            .get_mut(&lease_id)
-            .ok_or_else(|| Error::LeaseNotFound(lease_id.to_string()))?;
+        let lease = leases.get_mut(&lease_id).ok_or_else(|| Error::LeaseNotFound(lease_id.to_string()))?;
         if lease.state == LeaseState::Preempted {
-            let plane = topology
-                .planes
-                .iter_mut()
-                .find(|p| p.id == lease.plane_id)
+            let plane = topology.planes.iter_mut().find(|p| p.id == lease.plane_id)
                 .ok_or_else(|| Error::PlaneNotFound(lease.plane_id.clone()))?;
             if plane.available_memory_bytes < lease.allocated_memory_bytes {
                 return Err(Error::ResourceExhaustion {

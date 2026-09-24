@@ -91,7 +91,7 @@ pub fn run_warm(socket_path: impl AsRef<Path>, id: &str) -> Result<()> {
 pub fn run_pin(socket_path: impl AsRef<Path>, id: &str, plane: Option<&str>) -> Result<()> {
     let target_plane = plane.unwrap_or("npu-0");
     if let Ok(mut client) = VarlinkClient::connect(socket_path.as_ref()) {
-        let _ = client.pin_model(id, target_plane);
+        client.pin_model(id, target_plane)?;
     }
     println!("Pinned model '{}' to plane '{}' for emergency triage", id.green(), target_plane);
     Ok(())
@@ -99,7 +99,7 @@ pub fn run_pin(socket_path: impl AsRef<Path>, id: &str, plane: Option<&str>) -> 
 
 pub fn run_evict(socket_path: impl AsRef<Path>, id: &str) -> Result<()> {
     if let Ok(mut client) = VarlinkClient::connect(socket_path.as_ref()) {
-        let _ = client.evict_model(id);
+        client.evict_model(id)?;
     }
     println!("Evicted model '{}' from active residency via madvise(DontNeed)", id.yellow());
     Ok(())

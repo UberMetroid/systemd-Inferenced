@@ -70,18 +70,9 @@ pub async fn handle_release_lease(
     arbiter: &Arc<Arbiter>,
     active_leases: &mut Vec<LeaseId>,
 ) -> VarlinkReply {
-    let id_str = params
-        .and_then(|p| p.get("lease_id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let lease_id = match Uuid::parse_str(id_str) {
-        Ok(u) => LeaseId(u),
-        Err(_) => {
-            return VarlinkReply::error(
-                "org.varlink.service.InvalidParameter",
-                json!({"parameter": "lease_id"}),
-            )
-        }
+    let lease_id = match parse_lease_id(params) {
+        Ok(id) => id,
+        Err(e) => return e,
     };
 
     match arbiter.release_lease(lease_id).await {
@@ -97,36 +88,46 @@ pub async fn handle_release_lease(
 }
 
 pub async fn handle_yield(params: Option<&Value>, arbiter: &Arc<Arbiter>) -> VarlinkReply {
-    let id_str = params
-        .and_then(|p| p.get("lease_id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if let Ok(u) = Uuid::parse_str(id_str) {
-        let _ = arbiter.yield_lease(LeaseId(u)).await;
+    let lease_id = match parse_lease_id(params) {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+    match arbiter.yield_lease(lease_id).await {
+        Ok(_) => VarlinkReply::ok(json!({})),
+        Err(e) => VarlinkReply::error("io.systemd.inferenced1.LeaseNotFound", json!({"error": e.to_string()})),
     }
-    VarlinkReply::ok(json!({}))
 }
 
 pub async fn handle_freeze(params: Option<&Value>, arbiter: &Arc<Arbiter>) -> VarlinkReply {
-    let id_str = params
-        .and_then(|p| p.get("lease_id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if let Ok(u) = Uuid::parse_str(id_str) {
-        let _ = arbiter.freeze_lease(LeaseId(u)).await;
+    let lease_id = match parse_lease_id(params) {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+    match arbiter.freeze_lease(lease_id).await {
+        Ok(_) => VarlinkReply::ok(json!({})),
+        Err(e) => VarlinkReply::error("io.systemd.inferenced1.LeaseNotFound", json!({"error": e.to_string()})),
     }
-    VarlinkReply::ok(json!({}))
 }
 
 pub async fn handle_thaw(params: Option<&Value>, arbiter: &Arc<Arbiter>) -> VarlinkReply {
+    let lease_id = match parse_lease_id(params) {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+    match arbiter.thaw_lease(lease_id).await {
+        Ok(_) => VarlinkReply::ok(json!({})),
+        Err(e) => VarlinkReply::error("io.systemd.inferenced1.ResourceExhaustion", json!({"error": e.to_string()})),
+    }
+}
+
+fn parse_lease_id(params: Option<&Value>) -> Result<LeaseId, VarlinkReply> {
     let id_str = params
         .and_then(|p| p.get("lease_id"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    if let Ok(u) = Uuid::parse_str(id_str) {
-        let _ = arbiter.thaw_lease(LeaseId(u)).await;
-    }
-    VarlinkReply::ok(json!({}))
+    Uuid::parse_str(id_str)
+        .map(LeaseId)
+        .map_err(|_| VarlinkReply::error("org.varlink.service.InvalidParameter", json!({"parameter": "lease_id"})))
 }
 
 pub async fn handle_list_leases(arbiter: &Arc<Arbiter>) -> VarlinkReply {

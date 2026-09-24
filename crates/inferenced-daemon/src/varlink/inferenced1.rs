@@ -15,7 +15,9 @@ pub async fn handle_method(
     active_leases: &mut Vec<LeaseId>,
 ) -> Option<VarlinkReply> {
     match method {
-        "io.systemd.inferenced1.GetStatus" => Some(handle_get_status(arbiter).await),
+        "io.systemd.inferenced1.GetStatus" | "io.systemd.inferenced1.GetInfo" => {
+            Some(handle_get_status(arbiter).await)
+        }
         "io.systemd.inferenced1.ListPlanes" => Some(handle_list_planes(arbiter).await),
         "io.systemd.inferenced1.GetTopology" => Some(handle_get_topology(arbiter).await),
         "io.systemd.inferenced1.GetPressure" => Some(handle_get_pressure()),
@@ -26,8 +28,12 @@ pub async fn handle_method(
             Some(leases::handle_release_lease(params, arbiter, active_leases).await)
         }
         "io.systemd.inferenced1.Yield" => Some(leases::handle_yield(params, arbiter).await),
-        "io.systemd.inferenced1.Freeze" => Some(leases::handle_freeze(params, arbiter).await),
-        "io.systemd.inferenced1.Thaw" => Some(leases::handle_thaw(params, arbiter).await),
+        "io.systemd.inferenced1.Freeze" | "io.systemd.inferenced1.FreezeLease" => {
+            Some(leases::handle_freeze(params, arbiter).await)
+        }
+        "io.systemd.inferenced1.Thaw" | "io.systemd.inferenced1.ThawLease" => {
+            Some(leases::handle_thaw(params, arbiter).await)
+        }
         "io.systemd.inferenced1.ListLeases" => Some(leases::handle_list_leases(arbiter).await),
         "io.systemd.inferenced1.ListModels" => Some(models::handle_list_models(arbiter).await),
         "io.systemd.inferenced1.RegisterModel" => {
