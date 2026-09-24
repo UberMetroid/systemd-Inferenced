@@ -6,16 +6,16 @@ pub const CPU_TRIAGE_RESERVED_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2GB dedica
 /// Prefers NPU first to survive complete GPU driver panics, falling back to CPU.
 /// On CPU fallback, reserves 2GB memory quota without locking out non-emergency workloads.
 pub fn assign_triage_enclave(planes: &mut [ComputePlane]) -> Option<String> {
-    // 1. Prefer NPU first (fully reserved)
-    if let Some(npu) = planes.iter_mut().find(|p| p.kind == ComputePlaneKind::NpuAccelerator) {
+    // 1. Prefer NPU first (fully reserved, non-quarantined)
+    if let Some(npu) = planes.iter_mut().find(|p| p.kind == ComputePlaneKind::NpuAccelerator && !p.is_quarantined) {
         npu.is_triage_reserved = true;
         return Some(npu.id.clone());
     }
 
-    // 2. Fall back to dedicated CPU-AMX / Host CPU slice
+    // 2. Fall back to dedicated CPU-AMX / Host CPU slice (non-quarantined)
     // Reserves up to 2GB memory quota for emergency triage (or at most 25% of available RAM on constrained hosts),
     // leaving remaining RAM accessible for general workloads.
-    if let Some(cpu) = planes.iter_mut().find(|p| p.kind == ComputePlaneKind::CpuMatrixExtension) {
+    if let Some(cpu) = planes.iter_mut().find(|p| p.kind == ComputePlaneKind::CpuMatrixExtension && !p.is_quarantined) {
         cpu.is_triage_reserved = false;
         let triage_quota = CPU_TRIAGE_RESERVED_BYTES.min(cpu.available_memory_bytes / 4);
         cpu.available_memory_bytes = cpu

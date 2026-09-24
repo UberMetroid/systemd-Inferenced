@@ -23,6 +23,7 @@ fn make_test_state() -> Arc<AppState> {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
     let arbiter = Arc::new(Arbiter::new(topo));

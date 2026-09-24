@@ -19,6 +19,7 @@ async fn test_dead_client_lease_reclaim_lifecycle() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

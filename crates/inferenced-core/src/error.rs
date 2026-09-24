@@ -39,6 +39,9 @@ pub enum Error {
     #[error("Madvise page management error: {0}")]
     Madvise(String),
 
+    #[error("Systemd interface error: {0}")]
+    Systemd(String),
+
     #[error("System call error: {0}")]
     SystemCall(#[from] rustix::io::Errno),
 

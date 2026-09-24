@@ -24,6 +24,7 @@ async fn test_sentry_emergency_lease_bypasses_exhaustion() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: true,
+        is_quarantined: false,
         hardware_features: vec!["AMX-Tile".into()],
     });
 
@@ -85,6 +86,7 @@ async fn test_sentry_triage_socket_protocol_roundtrip() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: true,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 
@@ -150,6 +152,7 @@ async fn test_sentry_non_reserved_planes_unaffected_by_sentry_reservation() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
     topo.planes.push(ComputePlane {
@@ -162,6 +165,7 @@ async fn test_sentry_non_reserved_planes_unaffected_by_sentry_reservation() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: true,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

@@ -20,6 +20,7 @@ pub struct ComputePlane {
     pub numa_node: Option<u32>,
     pub supported_formats: Vec<String>,
     pub is_triage_reserved: bool,
+    pub is_quarantined: bool,
     pub hardware_features: Vec<String>,
 }
 

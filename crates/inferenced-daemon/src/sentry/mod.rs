@@ -100,11 +100,9 @@ async fn handle_sentry_connection(
         };
 
         let reply_bytes = serde_json::to_vec(&response)?;
-        stream.write_all(&reply_bytes).await?;
-        stream.flush().await?;
-
-        // Release emergency slice after responding
-        arbiter.release_lease(lease.id).await?;
+        let write_res = stream.write_all(&reply_bytes).await.and(stream.flush().await);
+        let _ = arbiter.release_lease(lease.id).await;
+        write_res?;
         info!("Released emergency triage lease {}", lease.id);
     }
 
@@ -141,6 +139,7 @@ mod tests {
             numa_node: None,
             supported_formats: vec![],
             is_triage_reserved: true,
+            is_quarantined: false,
             hardware_features: vec![],
         });
         topo

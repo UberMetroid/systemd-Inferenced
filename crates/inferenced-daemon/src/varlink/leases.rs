@@ -11,6 +11,7 @@ pub async fn handle_acquire_lease(
     params: Option<&Value>,
     arbiter: &Arc<Arbiter>,
     active_leases: &mut Vec<LeaseId>,
+    peer_info: Option<&inferenced_core::PeerInfo>,
 ) -> VarlinkReply {
     let params = match params {
         Some(p) => p,
@@ -46,8 +47,20 @@ pub async fn handle_acquire_lease(
         .map(ToString::to_string);
     let pid = params.get("pid").and_then(|v| v.as_u64()).map(|p| p as u32);
 
+    // Secure peer attribution: Use verified peer credentials and cgroup slice
+    let (verified_unit, verified_pid, priority) = if let Some(peer) = peer_info {
+        let p = if peer.is_batch {
+            LeasePriority::Batch
+        } else {
+            priority
+        };
+        (Some(peer.slice.clone()), if peer.pid > 0 { Some(peer.pid) } else { pid }, p)
+    } else {
+        (unit, pid, priority)
+    };
+
     match arbiter
-        .acquire_lease(priority, mem_bytes, plane, unit, pid)
+        .acquire_lease(priority, mem_bytes, plane, verified_unit, verified_pid)
         .await
     {
         Ok(lease) => {

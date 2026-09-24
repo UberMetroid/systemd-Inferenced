@@ -2,6 +2,7 @@ mod activation;
 mod creds;
 mod fd_server;
 mod gateway;
+mod inhibit;
 mod notify;
 mod sentry;
 mod varlink;
@@ -133,7 +134,33 @@ async fn main() -> anyhow::Result<()> {
 
     notify::notify_systemd_ready();
 
-    // Systemd Watchdog keepalive loop (pings every 10s for WatchdogSec=30s if arbiter is responsive)
+    // 5. Systemd-udevd Netlink KOBJECT_UEVENT listener for hardware hotplug & driver resets
+    let arbiter_hotplug = arbiter.clone();
+    let _udev_task = tokio::spawn(async move {
+        if let Ok(fd) = inferenced_core::open_uevent_socket() {
+            info!("Subscribed to Linux Netlink KOBJECT_UEVENT for dynamic hardware discovery");
+            let mut buf = [0u8; 8192];
+            let stream = tokio::net::UdpSocket::from_std(std::net::UdpSocket::from(fd));
+            if let Ok(socket) = stream {
+                loop {
+                    if let Ok((n, _)) = socket.recv_from(&mut buf).await {
+                        if let Some(uevent) = inferenced_core::Uevent::parse(&buf[..n]) {
+                            if uevent.is_compute_device() {
+                                info!(
+                                    "Kernel compute uevent (action={}, subsystem={}), refreshing topology",
+                                    uevent.action, uevent.subsystem
+                                );
+                                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                                let _ = arbiter_hotplug.refresh_topology().await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // 6. Systemd Watchdog keepalive loop (pings every 10s for WatchdogSec=30s if arbiter is responsive)
     let arbiter_clone = arbiter.clone();
     let watchdog_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));

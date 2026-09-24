@@ -1,0 +1,15 @@
+# /usr/lib/udev/rules.d/70-inferenced.rules
+# systemd-inferenced dynamic hardware tags & access permissions
+# Pure Rust Linux AI Hardware Arbiter
+
+# 1. DRM Discrete & Integrated GPUs (render nodes)
+SUBSYSTEM=="drm", KERNEL=="renderD*", TAG+="systemd", GROUP="render", MODE="0660"
+
+# 2. Linux Compute Accelerators (NPU)
+SUBSYSTEM=="accel", KERNEL=="accel*", TAG+="systemd", GROUP="render", MODE="0660"
+
+# 3. Hailo AI Accelerators
+SUBSYSTEM=="misc", KERNEL=="hailo*", TAG+="systemd", GROUP="render", MODE="0660"
+
+# 4. AMD ROCm Kernel Fusion Driver
+SUBSYSTEM=="kfd", KERNEL=="kfd", TAG+="systemd", GROUP="render", MODE="0660"

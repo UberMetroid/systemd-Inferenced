@@ -78,6 +78,7 @@ fn test_triage_enclave_assignment_and_quota() {
             numa_node: None,
             supported_formats: vec![],
             is_triage_reserved: false,
+            is_quarantined: false,
             hardware_features: vec![],
         },
     ];

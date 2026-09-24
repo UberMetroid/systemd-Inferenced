@@ -42,6 +42,7 @@ pub fn discover_drm_planes(dri_dir: &str, sysfs_drm_dir: &str, total_ram: u64, a
                 numa_node: None,
                 supported_formats: vec!["FP16".into(), "BF16".into(), "FP8".into(), "INT4".into(), "GGUF".into()],
                 is_triage_reserved: false,
+                is_quarantined: false,
                 hardware_features: vec!["drm-gem".into(), "vram-managed".into()],
             });
         }

@@ -18,6 +18,7 @@ fn make_boundary_arbiter(capacity_bytes: u64) -> Arbiter {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
     Arbiter::new(topo)

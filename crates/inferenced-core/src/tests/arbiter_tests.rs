@@ -14,6 +14,7 @@ fn create_test_topology(plane_id: &str, mem_bytes: u64) -> HardwareTopology {
         numa_node: None,
         supported_formats: vec!["FP16".into()],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec!["test".into()],
     });
     topo

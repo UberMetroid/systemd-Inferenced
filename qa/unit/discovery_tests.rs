@@ -64,6 +64,7 @@ fn test_discovery_triage_enclave_selection_hierarchy() {
             numa_node: None,
             supported_formats: vec![],
             is_triage_reserved: false,
+        is_quarantined: false,
             hardware_features: vec![],
         },
         ComputePlane {
@@ -76,6 +77,7 @@ fn test_discovery_triage_enclave_selection_hierarchy() {
             numa_node: None,
             supported_formats: vec![],
             is_triage_reserved: false,
+        is_quarantined: false,
             hardware_features: vec![],
         },
     ];

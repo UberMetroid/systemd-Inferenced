@@ -28,6 +28,7 @@ async fn test_scenario_emergency_driver_panic_triage() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 
@@ -42,6 +43,7 @@ async fn test_scenario_emergency_driver_panic_triage() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: true,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

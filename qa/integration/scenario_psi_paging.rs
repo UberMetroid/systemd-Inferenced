@@ -23,6 +23,7 @@ async fn test_scenario_memory_starvation_and_psi_paging() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

@@ -13,6 +13,7 @@ pub async fn handle_method(
     arbiter: &Arc<Arbiter>,
     writer: &mut Option<OwnedWriteHalf>,
     active_leases: &mut Vec<LeaseId>,
+    peer_info: Option<&inferenced_core::PeerInfo>,
 ) -> Option<VarlinkReply> {
     match method {
         "io.systemd.inferenced1.GetStatus" | "io.systemd.inferenced1.GetInfo" => {
@@ -22,7 +23,7 @@ pub async fn handle_method(
         "io.systemd.inferenced1.GetTopology" => Some(handle_get_topology(arbiter).await),
         "io.systemd.inferenced1.GetPressure" => Some(handle_get_pressure()),
         "io.systemd.inferenced1.AcquireLease" => {
-            Some(leases::handle_acquire_lease(params, arbiter, active_leases).await)
+            Some(leases::handle_acquire_lease(params, arbiter, active_leases, peer_info).await)
         }
         "io.systemd.inferenced1.ReleaseLease" => {
             Some(leases::handle_release_lease(params, arbiter, active_leases).await)

@@ -44,6 +44,7 @@ async fn test_fuzz_concurrent_randomized_leases() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

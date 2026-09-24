@@ -88,6 +88,7 @@ fn test_assign_triage_enclave_prefers_npu() {
             numa_node: None,
             supported_formats: vec![],
             is_triage_reserved: false,
+        is_quarantined: false,
             hardware_features: vec![],
         },
         ComputePlane {
@@ -100,6 +101,7 @@ fn test_assign_triage_enclave_prefers_npu() {
             numa_node: None,
             supported_formats: vec![],
             is_triage_reserved: false,
+        is_quarantined: false,
             hardware_features: vec![],
         },
     ];
@@ -122,6 +124,7 @@ fn test_assign_triage_enclave_falls_back_to_cpu() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     }];
 
@@ -147,6 +150,7 @@ fn test_assign_triage_enclave_proportional_on_constrained_host() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     }];
 
@@ -175,6 +179,7 @@ async fn test_arbiter_acquire_and_release_lease() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

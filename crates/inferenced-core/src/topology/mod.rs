@@ -1,6 +1,7 @@
 pub mod cpu;
 pub mod drm;
 pub mod npu;
+pub mod pstore;
 pub mod triage;
 pub mod types;
 
@@ -29,7 +30,17 @@ impl HardwareTopology {
         let cpu_plane = cpu::build_cpu_plane("/proc/cpuinfo", avail_ram);
         planes.push(cpu_plane);
 
-        // 4. Assign Sentry Emergency Triage Enclave
+        // 4. Ingest systemd-pstore crash records to quarantine unstable hardware
+        let pstore_audit = pstore::PstoreAudit::read_default();
+        for plane in &mut planes {
+            if pstore_audit.quarantined_drivers.iter().any(|d| {
+                plane.id.to_lowercase().contains(d) || plane.name.to_lowercase().contains(d)
+            }) {
+                plane.is_quarantined = true;
+            }
+        }
+
+        // 5. Assign Sentry Emergency Triage Enclave (skips quarantined planes)
         triage::assign_triage_enclave(&mut planes);
 
         Ok(Self {

@@ -99,6 +99,7 @@ pub fn build_cpu_plane(cpuinfo_path: &str, avail_ram: u64) -> ComputePlane {
         numa_node: Some(0),
         supported_formats: vec!["GGUF".into(), "INT4".into(), "INT8".into(), "FP32".into()],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: features,
     }
 }

@@ -30,6 +30,7 @@ async fn test_edge_insufficient_memory_rejection() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 
@@ -89,6 +90,7 @@ async fn test_edge_sentry_emergency_preemption_succeeds_even_when_exhausted() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: true,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

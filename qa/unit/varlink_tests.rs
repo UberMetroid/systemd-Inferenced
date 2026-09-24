@@ -63,6 +63,7 @@ async fn test_varlink_get_topology_payload() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 
@@ -103,6 +104,7 @@ async fn test_varlink_acquire_and_release_roundtrip() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
     let arbiter = Arc::new(Arbiter::new(topo));

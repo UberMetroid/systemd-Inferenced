@@ -22,6 +22,7 @@ async fn test_scenario_multitenant_arbitration_and_cooperative_yield() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

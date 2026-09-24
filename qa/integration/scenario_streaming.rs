@@ -31,6 +31,7 @@ async fn test_scenario_high_volume_token_streaming() {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec![],
     });
 

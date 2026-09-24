@@ -23,6 +23,7 @@ pub fn discover_npu_planes(accel_dir: &str, hailo_dev: &str) -> Vec<ComputePlane
                         numa_node: None,
                         supported_formats: vec!["INT8".into(), "FP8".into(), "INT4".into(), "ONNX".into()],
                         is_triage_reserved: false,
+                        is_quarantined: false,
                         hardware_features: vec!["low-power".into(), "sram-scratchpad".into(), "accel-subsystem".into()],
                     });
                 }
@@ -43,6 +44,7 @@ pub fn discover_npu_planes(accel_dir: &str, hailo_dev: &str) -> Vec<ComputePlane
             numa_node: None,
             supported_formats: vec!["HEF".into(), "INT8".into()],
             is_triage_reserved: false,
+            is_quarantined: false,
             hardware_features: vec!["26-tops".into(), "pcie-edge".into()],
         });
     }

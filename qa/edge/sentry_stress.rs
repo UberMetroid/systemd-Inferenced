@@ -18,6 +18,7 @@ fn make_stress_arbiter() -> Arbiter {
         numa_node: None,
         supported_formats: vec![],
         is_triage_reserved: true,
+        is_quarantined: false,
         hardware_features: vec![],
     });
     Arbiter::new(topo)

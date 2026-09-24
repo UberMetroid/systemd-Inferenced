@@ -1,0 +1,4 @@
+# /usr/lib/extension-release.d/extension-release.systemd-inferenced
+# Systemd System Extension metadata enabling portable deployment across
+# immutable Linux distributions (SteamOS, Fedora Silverblue, openSUSE MicroOS).
+ID=_any

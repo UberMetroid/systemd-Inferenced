@@ -28,6 +28,7 @@ async fn test_scenario_varlink_service_introspection_and_management() {
         numa_node: None,
         supported_formats: vec!["GGUF".into()],
         is_triage_reserved: false,
+        is_quarantined: false,
         hardware_features: vec!["Hailo-8".into()],
     });
 

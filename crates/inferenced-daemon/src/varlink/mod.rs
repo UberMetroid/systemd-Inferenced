@@ -25,6 +25,7 @@ pub async fn run_varlink_listener(
 ) -> anyhow::Result<()> {
     loop {
         let (stream, _) = listener.accept().await?;
+        let peer_info = inferenced_core::PeerInfo::from_socket(&stream).ok();
         let arbiter_clone = arbiter.clone();
 
         tokio::spawn(async move {
@@ -63,6 +64,7 @@ pub async fn run_varlink_listener(
                                     &arbiter_clone,
                                     &mut writer_opt,
                                     &mut active_leases,
+                                    peer_info.as_ref(),
                                 )
                                 .await
                             }

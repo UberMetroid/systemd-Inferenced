@@ -34,12 +34,14 @@ pub fn create_sealed_memfd(
     // Rewind file offset to start so readers sharing file description do not encounter EOF
     seek(&fd, SeekFrom::Start(0)).map_err(Error::SystemCall)?;
 
-    // Seal the memfd so consumers cannot modify weights or mutate length
-    fcntl_add_seals(
-        &fd,
-        SealFlags::SEAL | SealFlags::GROW | SealFlags::SHRINK | SealFlags::WRITE,
-    )
-    .map_err(Error::SystemCall)?;
+    // Seal the memfd so consumers cannot resize the buffer
+    // Only seal WRITE if data was actually written, allowing empty shared buffers to be populated
+    let seals = if initial_data.is_some() {
+        SealFlags::SEAL | SealFlags::GROW | SealFlags::SHRINK | SealFlags::WRITE
+    } else {
+        SealFlags::SEAL | SealFlags::GROW | SealFlags::SHRINK
+    };
+    fcntl_add_seals(&fd, seals).map_err(Error::SystemCall)?;
 
     Ok(fd)
 }

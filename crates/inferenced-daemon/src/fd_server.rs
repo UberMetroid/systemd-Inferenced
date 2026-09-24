@@ -49,6 +49,18 @@ pub async fn run_fd_server(listener: UnixListener) -> anyhow::Result<()> {
                 let name = req.name.unwrap_or_else(|| "inferenced-shm".into());
                 let size = req.size_bytes.unwrap_or(4 * 1024 * 1024); // default 4MB
 
+                const MAX_MEMFD_BYTES: u64 = 16 * 1024 * 1024 * 1024; // 16GB ceiling
+                if size > MAX_MEMFD_BYTES {
+                    let resp = FdResponse {
+                        status: "error".into(),
+                        message: Some(format!("Requested size {} exceeds limit of 16GB", size)),
+                    };
+                    if let Ok(bytes) = serde_json::to_vec(&resp) {
+                        let _ = stream.write_all(&bytes).await;
+                    }
+                    return;
+                }
+
                 match create_sealed_memfd(&name, size, None) {
                     Ok(memfd) => {
                         let resp = FdResponse {

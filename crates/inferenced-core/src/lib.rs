@@ -8,7 +8,9 @@ pub mod freezer;
 pub mod lease;
 pub mod madvise;
 pub mod model;
+pub mod netlink;
 pub mod paging;
+pub mod peer;
 pub mod preempt;
 pub mod psi;
 pub mod topology;
@@ -28,9 +30,12 @@ pub use madvise::{
     advise_dontneed, advise_hugepage, advise_random, advise_sequential, advise_willneed,
 };
 pub use model::{ModelDescriptor, ModelPlacementState, ModelRegistry};
+pub use netlink::{open_uevent_socket, Uevent};
 pub use paging::{MemfdPaging, PagingError, ZswapMetrics};
+pub use peer::PeerInfo;
 pub use preempt::{
     PreemptCoordinator, PreemptError, PreemptRecord, PreemptTier, DEFAULT_PREEMPT_TIMEOUT,
 };
 pub use psi::{PressureLevel, PressureMetrics};
 pub use topology::{ComputePlane, ComputePlaneKind, HardwareTopology};
+

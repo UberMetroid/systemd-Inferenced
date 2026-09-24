@@ -26,10 +26,15 @@ impl Arbiter {
     }
 
     pub async fn get_topology(&self) -> HardwareTopology { self.state.read().await.topology.clone() }
+    pub async fn update_topology(&self, topology: HardwareTopology) { self.state.write().await.topology = topology; }
+    pub async fn refresh_topology(&self) -> Result<()> {
+        let topo = HardwareTopology::discover()?;
+        self.update_topology(topo).await;
+        Ok(())
+    }
     pub async fn get_registry(&self) -> ModelRegistry { self.state.read().await.registry.clone() }
     pub async fn list_leases(&self) -> Vec<ComputeLease> { self.state.read().await.leases.values().cloned().collect() }
     pub async fn get_lease(&self, lease_id: LeaseId) -> Option<ComputeLease> { self.state.read().await.leases.get(&lease_id).cloned() }
-
 
     pub async fn register_model(&self, desc: ModelDescriptor) {
         self.state.write().await.registry.register(desc);
@@ -80,7 +85,7 @@ impl Arbiter {
                 .ok_or_else(|| Error::PlaneNotFound("No suitable compute plane for emergency triage".into()))?
         } else {
             state.topology.planes.iter().enumerate()
-                .filter(|(_, p)| !p.is_triage_reserved || priority == LeasePriority::EmergencyTriage)
+                .filter(|(_, p)| !p.is_quarantined && (!p.is_triage_reserved || priority == LeasePriority::EmergencyTriage))
                 .max_by_key(|(_, p)| p.available_memory_bytes)
                 .map(|(idx, _)| idx)
                 .ok_or_else(|| Error::PlaneNotFound("No available compute plane found".into()))?
