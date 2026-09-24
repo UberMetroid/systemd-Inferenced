@@ -5,10 +5,12 @@ mod notify;
 mod sentry;
 mod varlink;
 
-use activation::check_and_adopt_sockets;
+use activation::{check_and_adopt_sockets, GatewayListener};
 use clap::Parser;
-use gateway::{build_gateway_router, AppState};
-use inferenced_core::{arbiter::Arbiter, topology::HardwareTopology};
+use gateway::{build_gateway_router, serve_gateway, AppState};
+use inferenced_core::{
+    arbiter::Arbiter, paging::MemfdPaging, preempt::PreemptCoordinator, topology::HardwareTopology,
+};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -52,18 +54,26 @@ async fn main() -> anyhow::Result<()> {
 
     let topo = HardwareTopology::discover()?;
     info!(
-        "Discovered {} compute planes ({} RAM, {} cores)",
+        "Discovered {} compute planes ({} GB RAM, {} cores)",
         topo.planes.len(),
         topo.total_system_ram_bytes / (1024 * 1024 * 1024),
         topo.cpu_cores_total
     );
 
     let arbiter = Arc::new(Arbiter::new(topo));
+    let preempt = Arc::new(PreemptCoordinator::new(arbiter.clone()));
 
-    // 1. Varlink IPC Server
+    // Wire zero-copy paging manager
+    let _ = MemfdPaging;
+
+    // 1. Varlink IPC Server (FD 3)
     let varlink_listener = match activated.varlink.take() {
         Some(l) => l,
-        None => varlink::bind_or_create_listener(cli.varlink_socket.to_str().unwrap_or(varlink::DEFAULT_VARLINK_PATH))?,
+        None => varlink::bind_or_create_listener(
+            cli.varlink_socket
+                .to_str()
+                .unwrap_or(varlink::DEFAULT_VARLINK_PATH),
+        )?,
     };
     let varlink_arbiter = arbiter.clone();
     tokio::spawn(async move {
@@ -72,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // 2. Sentry Emergency Enclave
+    // 2. Sentry Emergency Enclave (FD 4)
     let sentry_listener = match activated.sentry.take() {
         Some(l) => l,
         None => sentry::bind_or_create_sentry_listener(&cli.sentry_socket)?,
@@ -84,10 +94,14 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // 3. SCM_RIGHTS Zero-Copy FD Server
+    // 3. SCM_RIGHTS Zero-Copy FD Server (FD 6)
     let fd_listener = match activated.fd_server.take() {
         Some(l) => l,
-        None => fd_server::bind_or_create_fd_listener(cli.fd_socket.to_str().unwrap_or(fd_server::DEFAULT_FD_SOCKET_PATH))?,
+        None => fd_server::bind_or_create_fd_listener(
+            cli.fd_socket
+                .to_str()
+                .unwrap_or(fd_server::DEFAULT_FD_SOCKET_PATH),
+        )?,
     };
     tokio::spawn(async move {
         if let Err(e) = fd_server::run_fd_server(fd_listener).await {
@@ -95,25 +109,24 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // 4. HTTP Gateway Router
+    // 4. HTTP Gateway Router & Server (FD 5 or standalone bind)
     let state = Arc::new(AppState {
         arbiter: arbiter.clone(),
+        preempt: preempt.clone(),
     });
     let app = build_gateway_router(state);
 
-    let tcp_listener = match activated.gateway.take() {
+    let gateway_listener = match activated.gateway.take() {
         Some(l) => l,
         None => {
             info!("Binding HTTP gateway to {}", cli.bind);
-            TcpListener::bind(cli.bind).await?
+            GatewayListener::Tcp(TcpListener::bind(cli.bind).await?)
         }
     };
 
     notify::notify_systemd_ready();
 
-    axum::serve(tcp_listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    serve_gateway(gateway_listener, app, shutdown_signal()).await?;
 
     notify::notify_systemd_stopping();
     info!("systemd-inferenced daemon terminated cleanly.");

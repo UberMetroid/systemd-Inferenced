@@ -110,6 +110,7 @@ impl Arbiter {
                 .collect();
             preemptable.sort_by_key(|id| state.leases.get(id).map(|l| l.priority));
 
+            let mut to_freeze = Vec::new();
             let ArbiterState { ref mut topology, ref mut leases, .. } = *state;
             for pid in preemptable {
                 if topology.planes[target_plane_idx].available_memory_bytes >= required_bytes {
@@ -118,6 +119,7 @@ impl Arbiter {
                 if let Some(lease) = leases.get_mut(&pid) {
                     warn!("Preempting lower-priority lease {} on plane {}", pid, target_plane_id);
                     lease.state = LeaseState::Preempted;
+                    to_freeze.push((lease.client_pid, lease.client_unit.clone()));
                     let reclaimed = lease.allocated_memory_bytes;
                     let plane = &mut topology.planes[target_plane_idx];
                     plane.available_memory_bytes = (plane.available_memory_bytes + reclaimed).min(plane.total_memory_bytes);
@@ -135,6 +137,19 @@ impl Arbiter {
                     });
                 }
             }
+
+            for (cpid, unit) in to_freeze {
+                if let Some(pid) = cpid {
+                    let _ = crate::freezer::send_cooperative_yield_signal(pid);
+                }
+                if let Some(ref u) = unit {
+                    let _ = crate::freezer::freeze_cgroup(u);
+                }
+            }
+        }
+
+        if state.leases.len() > 128 {
+            state.leases.retain(|_, l| l.is_active());
         }
 
         let target_plane = &mut state.topology.planes[target_plane_idx];
@@ -201,14 +216,26 @@ impl Arbiter {
 
     pub async fn thaw_lease(&self, lease_id: LeaseId) -> Result<()> {
         let mut state = self.state.write().await;
-        let lease = state
-            .leases
+        let ArbiterState { ref mut topology, ref mut leases, .. } = *state;
+        let lease = leases
             .get_mut(&lease_id)
             .ok_or_else(|| Error::LeaseNotFound(lease_id.to_string()))?;
-        if matches!(
-            lease.state,
-            LeaseState::Frozen | LeaseState::Preempted | LeaseState::Preempting
-        ) {
+        if lease.state == LeaseState::Preempted {
+            let plane = topology
+                .planes
+                .iter_mut()
+                .find(|p| p.id == lease.plane_id)
+                .ok_or_else(|| Error::PlaneNotFound(lease.plane_id.clone()))?;
+            if plane.available_memory_bytes < lease.allocated_memory_bytes {
+                return Err(Error::ResourceExhaustion {
+                    plane: lease.plane_id.clone(),
+                    requested_bytes: lease.allocated_memory_bytes,
+                    available_bytes: plane.available_memory_bytes,
+                });
+            }
+            plane.available_memory_bytes -= lease.allocated_memory_bytes;
+            lease.state = LeaseState::Active;
+        } else if matches!(lease.state, LeaseState::Frozen | LeaseState::Preempting) {
             lease.state = LeaseState::Active;
         }
         Ok(())
@@ -223,7 +250,5 @@ pub struct LeaseRequest {
     pub client_unit: Option<String>,
     pub client_pid: Option<u32>,
 }
-
 pub type LeaseGrant = ComputeLease;
 pub type LeaseError = Error;
-

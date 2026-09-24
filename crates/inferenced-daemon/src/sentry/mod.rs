@@ -14,8 +14,12 @@ pub const DEFAULT_SENTRY_SOCKET_PATH: &str = "/run/systemd-inferenced/sentry.soc
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SentryTriageResponse {
     pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub incident_id: Option<String>,
     pub allocated_plane: String,
+    pub plane_assigned: String,
+    pub queue_latency_us: u64,
+    pub preemption_triggered: bool,
     pub analysis: String,
 }
 
@@ -46,59 +50,64 @@ async fn handle_sentry_connection(
 ) -> anyhow::Result<()> {
     info!("Received emergency triage connection from systemd-sentry!");
 
-    // Read payload
-    let mut buf = vec![0u8; 65536];
-    let n = stream.read(&mut buf).await?;
-    if n == 0 {
-        return Ok(());
+    let mut buf = [0u8; 4096];
+    loop {
+        let n = stream.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+
+        let payload_json: Value = serde_json::from_slice(&buf[..n])
+            .unwrap_or_else(|_| serde_json::json!({ "raw": String::from_utf8_lossy(&buf[..n]) }));
+
+        let incident_id = payload_json
+            .get("incident_id")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
+
+        let unit_name = payload_json
+            .get("unit_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("systemd-sentry.service");
+
+        // Acquire emergency triage slice on protected plane
+        let lease = arbiter
+            .acquire_lease(
+                LeasePriority::EmergencyTriage,
+                1024 * 1024 * 1024, // 1GB dedicated emergency memory
+                None,
+                Some(unit_name.to_string()),
+                None,
+            )
+            .await?;
+
+        info!(
+            "Acquired emergency lease {} on plane {} for sentry incident {:?}",
+            lease.id, lease.plane_id, incident_id
+        );
+
+        let response = SentryTriageResponse {
+            status: "accepted".into(),
+            incident_id,
+            allocated_plane: lease.plane_id.clone(),
+            plane_assigned: lease.plane_id.clone(),
+            queue_latency_us: 0,
+            preemption_triggered: true,
+            analysis: format!(
+                "Emergency compute isolated on plane {}. AI hardware state preserved.",
+                lease.plane_id
+            ),
+        };
+
+        let reply_bytes = serde_json::to_vec(&response)?;
+        stream.write_all(&reply_bytes).await?;
+        stream.flush().await?;
+
+        // Release emergency slice after responding
+        arbiter.release_lease(lease.id).await?;
+        info!("Released emergency triage lease {}", lease.id);
     }
 
-    let payload_json: Value = serde_json::from_slice(&buf[..n])
-        .unwrap_or_else(|_| serde_json::json!({ "raw": String::from_utf8_lossy(&buf[..n]) }));
-
-    let incident_id = payload_json
-        .get("incident_id")
-        .and_then(|v| v.as_str())
-        .map(ToString::to_string);
-
-    let unit_name = payload_json
-        .get("unit_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("systemd-sentry.service");
-
-    // Acquire emergency triage slice
-    let lease = arbiter
-        .acquire_lease(
-            LeasePriority::EmergencyTriage,
-            1024 * 1024 * 1024, // 1GB dedicated emergency memory
-            None,
-            Some(unit_name.to_string()),
-            None,
-        )
-        .await?;
-
-    info!(
-        "Acquired emergency lease {} on plane {} for sentry incident {:?}",
-        lease.id, lease.plane_id, incident_id
-    );
-
-    let response = SentryTriageResponse {
-        status: "accepted".into(),
-        incident_id,
-        allocated_plane: lease.plane_id.clone(),
-        analysis: format!(
-            "Emergency triage isolated on plane {}. AI hardware state preserved.",
-            lease.plane_id
-        ),
-    };
-
-    let reply_bytes = serde_json::to_vec(&response)?;
-    stream.write_all(&reply_bytes).await?;
-    stream.flush().await?;
-
-    // Release emergency slice
-    arbiter.release_lease(lease.id).await?;
-    info!("Released emergency triage lease {}", lease.id);
     Ok(())
 }
 

@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use rustix::fd::{AsFd, OwnedFd};
-use rustix::fs::{fcntl_add_seals, ftruncate, memfd_create, MemfdFlags, SealFlags};
+use rustix::fs::{fcntl_add_seals, ftruncate, memfd_create, seek, MemfdFlags, SealFlags, SeekFrom};
 use rustix::io::write;
 use rustix::net::{
     recvmsg, sendmsg, RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags,
@@ -31,6 +31,9 @@ pub fn create_sealed_memfd(
         }
     }
 
+    // Rewind file offset to start so readers sharing file description do not encounter EOF
+    seek(&fd, SeekFrom::Start(0)).map_err(Error::SystemCall)?;
+
     // Seal the memfd so consumers cannot modify weights or mutate length
     fcntl_add_seals(
         &fd,
@@ -47,7 +50,7 @@ pub fn send_fd_over_unix<S: AsFd, F: AsFd>(
     fd_to_send: F,
     payload: &[u8],
 ) -> Result<usize> {
-    let mut space = vec![0u8; rustix::cmsg_space!(ScmRights(1))];
+    let mut space = [0u8; rustix::cmsg_space!(ScmRights(1))];
     let mut ancillary_buf = SendAncillaryBuffer::new(&mut space);
     let fds = [fd_to_send.as_fd()];
     let pushed = ancillary_buf.push(SendAncillaryMessage::ScmRights(&fds));
@@ -72,7 +75,7 @@ pub fn recv_fd_from_unix<S: AsFd>(
     socket: S,
     buf: &mut [u8],
 ) -> Result<(usize, Option<OwnedFd>)> {
-    let mut space = vec![0u8; rustix::cmsg_space!(ScmRights(1))];
+    let mut space = [0u8; rustix::cmsg_space!(ScmRights(1))];
     let mut ancillary_buf = RecvAncillaryBuffer::new(&mut space);
     let mut iov = [IoSliceMut::new(buf)];
 
@@ -80,7 +83,7 @@ pub fn recv_fd_from_unix<S: AsFd>(
         socket.as_fd(),
         &mut iov,
         &mut ancillary_buf,
-        RecvFlags::empty(),
+        RecvFlags::CMSG_CLOEXEC,
     )
     .map_err(Error::SystemCall)?;
 

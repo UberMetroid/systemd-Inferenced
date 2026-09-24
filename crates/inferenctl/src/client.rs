@@ -15,20 +15,14 @@ pub struct VarlinkClient {
 impl VarlinkClient {
     pub fn connect(socket_path: impl AsRef<Path>) -> Result<Self> {
         let stream = UnixStream::connect(socket_path.as_ref()).with_context(|| {
-            format!(
-                "Failed to connect to systemd-inferenced at {:?}",
-                socket_path.as_ref()
-            )
+            format!("Failed to connect to systemd-inferenced at {:?}", socket_path.as_ref())
         })?;
         let reader = BufReader::new(stream.try_clone()?);
         Ok(Self { stream, reader })
     }
 
     pub fn call(&mut self, method: &str, parameters: Option<Value>) -> Result<Value> {
-        let req = json!({
-            "method": method,
-            "parameters": parameters.unwrap_or_else(|| json!({})),
-        });
+        let req = json!({ "method": method, "parameters": parameters.unwrap_or_else(|| json!({})) });
         let mut msg = serde_json::to_vec(&req)?;
         msg.push(0);
         self.stream.write_all(&msg)?;
@@ -47,7 +41,6 @@ impl VarlinkClient {
         if let Some(err) = resp.get("error").and_then(|v| v.as_str()) {
             bail!("Varlink error {}: {:?}", err, resp.get("parameters"));
         }
-
         Ok(resp.get("parameters").cloned().unwrap_or_else(|| json!({})))
     }
 
@@ -82,10 +75,7 @@ impl VarlinkClient {
                 bail!("Varlink stream error {}: {:?}", err, resp.get("parameters"));
             }
             on_message(&resp)?;
-            let continues = resp
-                .get("continues")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let continues = resp.get("continues").and_then(|v| v.as_bool()).unwrap_or(false);
             if !continues {
                 break;
             }
@@ -105,63 +95,40 @@ impl VarlinkClient {
         self.call("io.systemd.inferenced1.ListLeases", None)
     }
 
-    pub fn acquire_lease(
-        &mut self,
-        priority: &str,
-        memory_bytes: u64,
-        plane: Option<&str>,
-    ) -> Result<Value> {
-        self.call(
-            "io.systemd.inferenced1.AcquireLease",
-            Some(json!({
-                "priority": priority,
-                "memory_bytes": memory_bytes,
-                "plane": plane,
-            })),
-        )
+    pub fn acquire_lease(&mut self, priority: &str, memory_bytes: u64, plane: Option<&str>) -> Result<Value> {
+        self.call("io.systemd.inferenced1.AcquireLease", Some(json!({
+            "priority": priority, "memory_bytes": memory_bytes, "plane": plane,
+        })))
     }
 
     pub fn release_lease(&mut self, lease_id: &str) -> Result<Value> {
-        self.call(
-            "io.systemd.inferenced1.ReleaseLease",
-            Some(json!({ "lease_id": lease_id })),
-        )
+        self.call("io.systemd.inferenced1.ReleaseLease", Some(json!({ "lease_id": lease_id })))
     }
 
     pub fn freeze(&mut self, lease_id: &str) -> Result<Value> {
-        self.call(
-            "io.systemd.inferenced1.Freeze",
-            Some(json!({ "lease_id": lease_id })),
-        )
+        self.call("io.systemd.inferenced1.Freeze", Some(json!({ "lease_id": lease_id })))
     }
 
     pub fn thaw(&mut self, lease_id: &str) -> Result<Value> {
-        self.call(
-            "io.systemd.inferenced1.Thaw",
-            Some(json!({ "lease_id": lease_id })),
-        )
+        self.call("io.systemd.inferenced1.Thaw", Some(json!({ "lease_id": lease_id })))
     }
 
     pub fn list_models(&mut self) -> Result<Value> {
         self.call("io.systemd.inferenced1.ListModels", None)
     }
 
-    pub fn register_model(
-        &mut self,
-        id: &str,
-        format: &str,
-        path: &str,
-        estimated_bytes: u64,
-    ) -> Result<Value> {
-        self.call(
-            "io.systemd.inferenced1.RegisterModel",
-            Some(json!({
-                "id": id,
-                "format": format,
-                "path": path,
-                "estimated_bytes": estimated_bytes,
-            })),
-        )
+    pub fn register_model(&mut self, id: &str, format: &str, path: &str, bytes: u64) -> Result<Value> {
+        self.call("io.systemd.inferenced1.RegisterModel", Some(json!({
+            "id": id, "format": format, "path": path, "estimated_bytes": bytes,
+        })))
+    }
+
+    pub fn evict_model(&mut self, model: &str) -> Result<Value> {
+        self.call("io.systemd.inferenced1.EvictModel", Some(json!({ "model": model })))
+    }
+
+    pub fn pin_model(&mut self, model: &str, plane: &str) -> Result<Value> {
+        self.call("io.systemd.inferenced1.PinModel", Some(json!({ "model": model, "plane": plane })))
     }
 
     pub fn get_info(&mut self) -> Result<Value> {
@@ -170,9 +137,6 @@ impl VarlinkClient {
 
     #[allow(dead_code)]
     pub fn get_interface_description(&mut self, interface: &str) -> Result<Value> {
-        self.call(
-            "org.varlink.service.GetInterfaceDescription",
-            Some(json!({ "interface": interface })),
-        )
+        self.call("org.varlink.service.GetInterfaceDescription", Some(json!({ "interface": interface })))
     }
 }

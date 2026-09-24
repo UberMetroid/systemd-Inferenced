@@ -1,11 +1,21 @@
 use super::types::*;
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
-use inferenced_core::{arbiter::Arbiter, lease::LeasePriority};
+use axum::{
+    body::Body,
+    extract::State,
+    http::{header::CONTENT_TYPE, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
+};
+use inferenced_core::{arbiter::Arbiter, lease::LeasePriority, preempt::PreemptCoordinator};
+use std::convert::Infallible;
 use std::sync::Arc;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 
 pub struct AppState {
     pub arbiter: Arc<Arbiter>,
+    #[allow(dead_code)]
+    pub preempt: Arc<PreemptCoordinator>,
 }
 
 pub async fn health_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -48,7 +58,8 @@ pub async fn chat_completions_handler(
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({ "error": e.to_string() })),
-            );
+            )
+                .into_response();
         }
     };
 
@@ -70,15 +81,29 @@ pub async fn chat_completions_handler(
             }],
         })),
     )
+        .into_response()
 }
 
 pub async fn ollama_generate_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let model = payload.get("model").and_then(|v| v.as_str()).unwrap_or("default");
-    let memory_needed = 2 * 1024 * 1024 * 1024;
+    let model = payload
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default")
+        .to_string();
+    let prompt = payload
+        .get("prompt")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let stream_requested = payload
+        .get("stream")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
+    let memory_needed = 2 * 1024 * 1024 * 1024;
     let lease = match state
         .arbiter
         .acquire_lease(
@@ -95,17 +120,75 @@ pub async fn ollama_generate_handler(
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({ "error": e.to_string() })),
-            );
+            )
+                .into_response();
         }
     };
 
-    let _ = state.arbiter.release_lease(lease.id).await;
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
+    let arbiter = state.arbiter.clone();
+    let lease_id = lease.id;
+
+    if !stream_requested {
+        let _ = arbiter.release_lease(lease_id).await;
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "model": model,
+                "created_at": chrono::Utc::now().to_rfc3339(),
+                "response": format!("systemd-inferenced: processed prompt '{}'", prompt),
+                "done": true,
+                "total_duration": 1500000,
+            })),
+        )
+            .into_response();
+    }
+
+    // Streaming response with NDJSON chunks
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<axum::body::Bytes, Infallible>>(16);
+    let stream = ReceiverStream::new(rx);
+    let body = Body::from_stream(stream);
+
+    tokio::spawn(async move {
+        let tokens = vec![
+            "systemd-inferenced: ".to_string(),
+            "streaming ".to_string(),
+            "token ".to_string(),
+            "generation ".to_string(),
+            format!("for prompt '{}'.", prompt),
+        ];
+
+        for tok in tokens {
+            let chunk = serde_json::json!({
+                "model": model,
+                "created_at": chrono::Utc::now().to_rfc3339(),
+                "response": tok,
+                "done": false
+            });
+            let mut bytes = serde_json::to_vec(&chunk).unwrap_or_default();
+            bytes.push(b'\n');
+            if tx.send(Ok(bytes.into())).await.is_err() {
+                break;
+            }
+        }
+
+        let final_chunk = serde_json::json!({
             "model": model,
-            "response": "systemd-inferenced: compute lease scheduled and released.",
-            "done": true
-        })),
-    )
+            "created_at": chrono::Utc::now().to_rfc3339(),
+            "response": "",
+            "done": true,
+            "total_duration": 1500000
+        });
+        let mut final_bytes = serde_json::to_vec(&final_chunk).unwrap_or_default();
+        final_bytes.push(b'\n');
+        let _ = tx.send(Ok(final_bytes.into())).await;
+
+        let _ = arbiter.release_lease(lease_id).await;
+    });
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, "application/x-ndjson")
+        .body(body)
+        .unwrap()
+        .into_response()
 }

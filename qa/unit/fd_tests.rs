@@ -110,3 +110,28 @@ fn test_memfd_large_tensor_transfer() {
     assert_eq!(read_buf[0], 0x42);
     assert_eq!(read_buf[large_tensor.len() - 1], 0x42);
 }
+
+#[test]
+fn test_memfd_offset_rewound_at_creation() {
+    let data = b"initial-weights-rewound";
+    let fd = create_sealed_memfd("rewound", data.len() as u64, Some(data)).unwrap();
+    let mut read_buf = vec![0u8; data.len()];
+    // Must be able to read immediately from offset 0 without an explicit seek
+    let n = read(&fd, &mut read_buf).expect("reading from newly created memfd must read from start");
+    assert_eq!(n, data.len());
+    assert_eq!(&read_buf, data);
+}
+
+#[test]
+fn test_recv_fd_has_cloexec_flag() {
+    let (s1, s2) = UnixStream::pair().unwrap();
+    let memfd = create_sealed_memfd("cloexec_test", 64, None).unwrap();
+    send_fd_over_unix(&s1, &memfd, b"cloexec").unwrap();
+
+    let mut buf = [0u8; 16];
+    let (_, recv_fd) = recv_fd_from_unix(&s2, &mut buf).unwrap();
+    let fd = recv_fd.unwrap();
+    let flags = rustix::fs::fcntl_getfd(&fd).unwrap();
+    assert!(flags.contains(rustix::fs::FdFlags::CLOEXEC), "Received fd must have FD_CLOEXEC set");
+}
+

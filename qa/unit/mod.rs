@@ -135,6 +135,33 @@ fn test_assign_triage_enclave_falls_back_to_cpu() {
     );
 }
 
+#[test]
+fn test_assign_triage_enclave_proportional_on_constrained_host() {
+    let mut planes = vec![ComputePlane {
+        id: "cpu-edge".into(),
+        name: "Edge Host CPU".into(),
+        kind: ComputePlaneKind::CpuMatrixExtension,
+        device_path: None,
+        total_memory_bytes: 4 * 1024 * 1024 * 1024,
+        available_memory_bytes: 4 * 1024 * 1024 * 1024,
+        numa_node: None,
+        supported_formats: vec![],
+        is_triage_reserved: false,
+        hardware_features: vec![],
+    }];
+
+    let reserved = triage::assign_triage_enclave(&mut planes);
+    assert_eq!(reserved, Some("cpu-edge".into()));
+    assert!(!planes[0].is_triage_reserved);
+    // On a 4GB system, 25% (1GB) is reserved for emergency triage, leaving 3GB for normal workloads
+    assert_eq!(
+        planes[0].available_memory_bytes,
+        3 * 1024 * 1024 * 1024,
+        "Proportional triage quota should reserve 1GB on a 4GB edge host"
+    );
+}
+
+
 #[tokio::test]
 async fn test_arbiter_acquire_and_release_lease() {
     let mut topo = HardwareTopology::default();

@@ -18,8 +18,6 @@ authors = ["systemd-inferenced contributors"]
 # Internal workspace crates
 inferenced-core = { path = "crates/inferenced-core" }
 
-# Pure Rust D-Bus (zero libdbus-1.so)
-zbus = { version = "5.19", default-features = false, features = ["tokio"] }
 
 # Pure Rust async runtime & Linux system interfaces (zero libsystemd.so)
 tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "signal", "time", "process", "sync"] }
@@ -48,4 +46,3 @@ hyper = { version = "1.4", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 http-body-util = "0.1"
 axum = { version = "0.7", features = ["tokio", "http2"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

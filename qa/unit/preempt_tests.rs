@@ -118,3 +118,41 @@ async fn test_preempt_multiple_lower_priority_leases_preempted_in_order() {
     assert_eq!(arbiter.get_lease(b1.id).await.unwrap().state, LeaseState::Preempted);
     assert_eq!(arbiter.get_lease(b2.id).await.unwrap().state, LeaseState::Preempted);
 }
+
+#[tokio::test]
+async fn test_preempt_thaw_preempted_lease_memory_safety() {
+    let total_bytes = 4 * 1024 * 1024 * 1024;
+    let arbiter = make_test_arbiter(total_bytes);
+
+    let batch = arbiter
+        .acquire_lease(LeasePriority::Batch, total_bytes, None, None, None)
+        .await
+        .unwrap();
+
+    let interactive = arbiter
+        .acquire_lease(LeasePriority::Interactive, total_bytes, None, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(arbiter.get_lease(batch.id).await.unwrap().state, LeaseState::Preempted);
+
+    // Attempting to thaw batch lease while memory is fully occupied must fail
+    let thaw_err = arbiter.thaw_lease(batch.id).await;
+    assert!(thaw_err.is_err(), "Thawing preempted lease with no available memory must fail");
+
+    // Release interactive lease, freeing 4GB
+    arbiter.release_lease(interactive.id).await.unwrap();
+
+    // Now thawing batch lease succeeds and deducts memory
+    arbiter.thaw_lease(batch.id).await.unwrap();
+    let thawed = arbiter.get_lease(batch.id).await.unwrap();
+    assert_eq!(thawed.state, LeaseState::Active);
+
+    let topo = arbiter.get_topology().await;
+    assert_eq!(topo.planes[0].available_memory_bytes, 0);
+
+    // Releasing thawed lease restores memory cleanly without double reclaim
+    arbiter.release_lease(batch.id).await.unwrap();
+    let topo_final = arbiter.get_topology().await;
+    assert_eq!(topo_final.planes[0].available_memory_bytes, total_bytes);
+}

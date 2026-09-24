@@ -89,7 +89,7 @@ impl MemfdPaging {
 
     /// Receive a model descriptor string and passed sealed file descriptor from a Unix socket.
     pub fn recv_model_fd<S: AsFd>(socket: S) -> Result<(String, OwnedFd)> {
-        let mut buf = vec![0u8; 1024];
+        let mut buf = [0u8; 1024];
         let (bytes_read, fd_opt) = recv_fd_from_unix(socket, &mut buf)?;
         let fd = fd_opt.ok_or_else(|| {
             Error::Fd("No file descriptor received in SCM_RIGHTS message".into())

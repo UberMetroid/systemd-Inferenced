@@ -48,6 +48,19 @@ type ModelInfo (
   placement: string
 )
 
+method GetStatus() -> (
+  status: string,
+  version: string,
+  daemon: string,
+  planes_count: int,
+  leases_count: int,
+  pressure: string
+)
+
+method ListPlanes() -> (
+  planes: []ComputePlane
+)
+
 method GetTopology() -> (
   planes: []ComputePlane,
   total_ram: int,
@@ -88,6 +101,9 @@ method RegisterModel(
   estimated_bytes: int
 ) -> ()
 
+method EvictModel(model: string) -> ()
+method PinModel(model: string, plane: string) -> ()
+
 method StreamInference(
   model: string,
   prompt: string
@@ -108,7 +124,7 @@ pub fn handle_get_info() -> VarlinkReply {
         "vendor": "systemd-inferenced",
         "product": "systemd-inferenced",
         "version": "0.1.0",
-        "url": "https://github.com/UberMetroid/systemd-Inferenced",
+        "url": "https://github.com/systemd/systemd-inferenced",
         "interfaces": [
             "org.varlink.service",
             "io.systemd.inferenced1"

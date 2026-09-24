@@ -72,7 +72,10 @@ fn resolve_freeze_path(path: &Path) -> PathBuf {
 
 fn write_cgroup_freeze(path: &Path, val: &str) -> Result<()> {
     let freeze_file = resolve_freeze_path(path);
-    let mut file = File::create(&freeze_file)
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .open(&freeze_file)
+        .or_else(|_| File::create(&freeze_file))
         .map_err(|e| Error::Freezer(format!("Failed to open {}: {}", freeze_file.display(), e)))?;
     file.write_all(val.as_bytes())
         .map_err(|e| Error::Freezer(format!("Failed to write to {}: {}", freeze_file.display(), e)))?;

@@ -13,12 +13,14 @@ pub fn assign_triage_enclave(planes: &mut [ComputePlane]) -> Option<String> {
     }
 
     // 2. Fall back to dedicated CPU-AMX / Host CPU slice
-    // Reserves a 2GB memory quota for emergency triage, leaving remaining RAM accessible
+    // Reserves up to 2GB memory quota for emergency triage (or at most 25% of available RAM on constrained hosts),
+    // leaving remaining RAM accessible for general workloads.
     if let Some(cpu) = planes.iter_mut().find(|p| p.kind == ComputePlaneKind::CpuMatrixExtension) {
         cpu.is_triage_reserved = false;
+        let triage_quota = CPU_TRIAGE_RESERVED_BYTES.min(cpu.available_memory_bytes / 4);
         cpu.available_memory_bytes = cpu
             .available_memory_bytes
-            .saturating_sub(CPU_TRIAGE_RESERVED_BYTES);
+            .saturating_sub(triage_quota);
         return Some(cpu.id.clone());
     }
 

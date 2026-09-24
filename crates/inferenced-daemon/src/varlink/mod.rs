@@ -1,13 +1,16 @@
 pub mod inferenced1;
+pub mod leases;
+pub mod models;
 pub mod protocol;
 pub mod service;
 
 use inferenced_core::arbiter::Arbiter;
+use inferenced_core::lease::LeaseId;
 use protocol::{make_method_not_found, parse_request};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tracing::{error, info};
 
@@ -26,10 +29,12 @@ pub async fn run_varlink_listener(
             let mut buf_reader = BufReader::new(reader);
             let mut writer_opt = Some(writer);
             let mut buf = Vec::new();
+            let mut active_leases: Vec<LeaseId> = Vec::new();
 
             loop {
                 buf.clear();
-                match buf_reader.read_until(0, &mut buf).await {
+                let mut chunk = (&mut buf_reader).take(1024 * 1024);
+                match chunk.read_until(0, &mut buf).await {
                     Ok(0) => break, // Client disconnected
                     Ok(_) => {
                         let req = match parse_request(&buf) {
@@ -54,6 +59,7 @@ pub async fn run_varlink_listener(
                                     params,
                                     &arbiter_clone,
                                     &mut writer_opt,
+                                    &mut active_leases,
                                 )
                                 .await
                             }
@@ -78,6 +84,15 @@ pub async fn run_varlink_listener(
                         break;
                     }
                 }
+            }
+
+            // Auto-reclaim any lingering leases held by disconnected client
+            for lease_id in active_leases {
+                info!(
+                    "Reclaiming orphaned lease {} from disconnected Varlink client",
+                    lease_id
+                );
+                let _ = arbiter_clone.release_lease(lease_id).await;
             }
         });
     }
