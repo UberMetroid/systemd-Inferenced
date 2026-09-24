@@ -7,8 +7,13 @@ use inferenced_core::{
 use std::io::Write;
 use tempfile::NamedTempFile;
 
+mod boundary_limits;
+mod cli_edge;
+mod corrupt_inputs;
 mod dead_client_reclaim;
 mod preemption_storm;
+mod sentry_stress;
+mod socket_faults;
 
 #[tokio::test]
 async fn test_edge_insufficient_memory_rejection() {

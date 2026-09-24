@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About — systemd-inferenced</title>
+  <meta name="description" content="Architecture, zero-copy data plane, and systemd integration of systemd-inferenced.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+</head>
+<body>
+  <div class="wrap">
+
+    <header class="page-head">
+      <div class="back">
+        <a href="index.html">&larr; back to systemd-inferenced</a>
+      </div>
+      <div class="tag">about / v0.1.0</div>
+    </header>
+
+    <h1>About <span class="accent">systemd-inferenced</span>.</h1>
+    <p class="lede">
+      Background, architecture, and design principles of the unprivileged
+      hardware arbiter and model lifecycle broker in pure Rust.
+    </p>
+
+    <section>
+      <h2><span class="num">01</span>The Linux Local AI Problem</h2>
+      <p>
+        AI inference engines (Ollama, llama.cpp, vLLM, InvokeAI, Whisper) are currently
+        stuck in the single-user MS-DOS era. They treat GPUs and memory buses as private
+        playgrounds:
+      </p>
+      <ul>
+        <li><strong>Greedy Pool Allocators</strong>: Engines pre-allocate all available VRAM up front, causing fatal CUDA out-of-memory errors for peer daemons.</li>
+        <li><strong>Memory Bus Starvation</strong>: On integrated APUs and SoCs (AMD Ryzen AI, Intel Core Ultra, ARM SoCs), unthrottled inference consumes 80–120 GB/s across the shared DDR/LPDDR bus, freezing Wayland compositors and audio servers.</li>
+        <li><strong>Supervisory Blindness</strong>: When an AI daemon hangs a GPU driver, crash supervisors like <a href="https://github.com/UberMetroid/systemd-sentry">systemd-sentry</a> cannot diagnose the node if they rely on the same crashed driver.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2><span class="num">02</span>The Unix &amp; Torvalds Data Plane</h2>
+      <p>
+        Linus Torvalds has consistently advocated against userland duplicating the kernel's virtual memory subsystem. <code>systemd-inferenced</code> adheres to this philosophy:
+      </p>
+      <ul class="benefits">
+        <li>
+          <strong>Everything is a File Descriptor.</strong>
+          <span>Model weights are downloaded or staged into anonymous memory files via
+          <code>memfd_create("model", MFD_CLOEXEC | MFD_ALLOW_SEALING)</code>.
+          Descriptors are sealed with <code>F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_WRITE</code>
+          and passed over Unix domain sockets using <code>SCM_RIGHTS</code>.</span>
+        </li>
+        <li>
+          <strong>Zero Userland Memory Copying.</strong>
+          <span>The daemon leaves the data path completely. Client processes map the received descriptor with
+          <code>mmap(MAP_SHARED)</code>. The Linux page cache maps physical memory once across all engines.</span>
+        </li>
+        <li>
+          <strong>Kernel Memory Delegation.</strong>
+          <span>Pre-warming uses <code>madvise(Advice::WillNeed)</code>. Memory shedding under pressure uses
+          <code>madvise(Advice::LinuxDontNeed)</code>, allowing kernel <code>zswap</code> to compress inactive pages in RAM.</span>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2><span class="num">03</span>The Systemd Control Plane</h2>
+      <p>
+        Systemd provides declarative lifecycle and resource boundaries:
+      </p>
+      <ul>
+        <li><strong>Native Varlink IPC (<code>io.systemd.inferenced1</code>)</strong>: Strongly typed, self-documenting JSON-RPC over <code>/run/systemd-inferenced/io.systemd.inferenced1</code>, fully verifiable via <code>varlinkctl</code>.</li>
+        <li><strong>Pure Rust Socket Activation</strong>: Automatically adopts pre-bound descriptors from <code>$LISTEN_FDS</code>, preventing <code>EADDRINUSE</code> port conflicts on boot.</li>
+        <li><strong>Two-Tier Preemption</strong>: Sends a cooperative yield with a 250ms deadline, falling back to instant zero-CPU suspension via <code>/sys/fs/cgroup/ai.slice/cgroup.freeze</code>.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2><span class="num">04</span>systemd-sentry Triage Enclave</h2>
+      <p>
+        <a href="https://github.com/UberMetroid/systemd-sentry">systemd-sentry</a> is the autonomous crash supervisor for systemd.
+        <code>systemd-inferenced</code> guarantees Sentry's operational survival:
+      </p>
+      <p>
+        If an NPU (<code>/dev/accel/*</code> or Hailo) is detected, Sentry's emergency triage core is permanently mapped to the NPU's isolated SRAM.
+        On systems without an NPU, a dedicated CPU AMX/AVX slice is locked in memory via <code>MemoryMin=2G</code> in <code>ai-sentry.slice</code>.
+        Sentry communicates over a dedicated out-of-band Unix socket (<code>/run/systemd-inferenced/sentry.sock</code>),
+        guaranteeing instant root-cause analysis even during catastrophic discrete GPU driver lockups.
+      </p>
+    </section>
+
+    <section>
+      <h2><span class="num">05</span>Zero C Dependencies &amp; Code Quality</h2>
+      <p>
+        The entire project is built with strict architectural guardrails:
+      </p>
+      <ul>
+        <li><strong>100% Pure Rust</strong>: Zero dynamic linkages to <code>libsystemd.so</code>, <code>libdbus-1.so</code>, <code>libssl.so</code>, <code>libcrypto.so</code>, or <code>libdrm.so</code>. Verified via <code>ldd</code>.</li>
+        <li><strong>No File &gt; 256 Lines</strong>: Every source file is strictly under 256 lines of code to enforce clean functional modularity.</li>
+        <li><strong>Comprehensive QA</strong>: 36 passing tests covering unit, edge-case, preemption storm, and fuzz test suites.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <span>systemd-inferenced · Apache 2.0 License</span>
+      <span><a href="index.html">Home</a> · <a href="https://github.com/UberMetroid/systemd-Inferenced">GitHub</a></span>
+    </footer>
+
+  </div>
+</body>
+</html>

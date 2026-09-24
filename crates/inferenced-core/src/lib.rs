@@ -8,12 +8,17 @@ pub mod freezer;
 pub mod lease;
 pub mod madvise;
 pub mod model;
+pub mod paging;
+pub mod preempt;
 pub mod psi;
 pub mod topology;
 
-pub use arbiter::{Arbiter, ArbiterState};
+#[cfg(test)]
+mod tests;
+
+pub use arbiter::{Arbiter, ArbiterState, LeaseError, LeaseGrant, LeaseRequest};
 pub use error::{Error, Result};
-pub use fd_lease::{create_sealed_memfd, recv_fd_from_unix, send_fd_over_unix};
+pub use fd_lease::{create_sealed_memfd, recv_fd_from_unix, send_fd_over_unix, FdLease};
 pub use freezer::{
     freeze_cgroup, freeze_process_signal, is_cgroup_frozen, send_cooperative_yield_signal,
     signal_process, thaw_cgroup, thaw_process_signal, FreezeState,
@@ -23,5 +28,9 @@ pub use madvise::{
     advise_dontneed, advise_hugepage, advise_random, advise_sequential, advise_willneed,
 };
 pub use model::{ModelDescriptor, ModelPlacementState, ModelRegistry};
+pub use paging::{MemfdPaging, PagingError, ZswapMetrics};
+pub use preempt::{
+    PreemptCoordinator, PreemptError, PreemptRecord, PreemptTier, DEFAULT_PREEMPT_TIMEOUT,
+};
 pub use psi::{PressureLevel, PressureMetrics};
 pub use topology::{ComputePlane, ComputePlaneKind, HardwareTopology};

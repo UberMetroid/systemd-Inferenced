@@ -8,9 +8,7 @@ fn create_abstract_receiver() -> (UnixDatagram, String) {
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let name = format!("inferenced_notify_test_{}_{}", std::process::id(), id);
     let addr = SocketAddr::from_abstract_name(name.as_bytes()).expect("abstract addr");
-    let receiver = UnixDatagram::unbound().expect("unbound socket");
-    // Bind to abstract socket address
-    receiver.bind_addr(&addr).expect("bind abstract");
+    let receiver = UnixDatagram::bind_addr(&addr).expect("bind abstract");
     (receiver, format!("@{}", name))
 }
 

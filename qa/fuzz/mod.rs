@@ -5,6 +5,7 @@ use inferenced_core::{
 };
 use std::sync::Arc;
 
+mod stream_fuzz;
 mod varlink_fuzz;
 
 #[test]

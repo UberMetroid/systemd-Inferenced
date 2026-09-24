@@ -2,7 +2,6 @@ use crate::client::VarlinkClient;
 use anyhow::Result;
 use colored::*;
 use inferenced_core::psi::PressureMetrics;
-use inferenced_core::topology::HardwareTopology;
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
 
@@ -46,100 +45,75 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 pub fn run_status(socket_path: impl AsRef<Path>, json_out: bool) -> Result<()> {
-    if let Ok(mut client) = VarlinkClient::connect(socket_path.as_ref()) {
-        let topo = client.get_topology()?;
-        let pressure = client.get_pressure()?;
-        let leases = client.list_leases()?;
+    let mut client = VarlinkClient::connect(socket_path.as_ref())?;
+    let topo = client.get_topology()?;
+    let pressure = client.get_pressure()?;
+    let leases = client.list_leases()?;
 
-        if json_out {
-            let combined = serde_json::json!({
-                "daemon": "active (running)",
-                "topology": topo,
-                "pressure": pressure,
-                "leases": leases,
-            });
-            println!("{}", serde_json::to_string_pretty(&combined)?);
-            return Ok(());
-        }
-
-        println!("{}", "● systemd-inferenced.service - Heterogeneous AI Compute Fabric".bold());
-        println!("     Status: {}", "active (running via Varlink IPC)".green().bold());
-
-        if let Some(planes) = topo.get("planes").and_then(|v| v.as_array()) {
-            let rows: Vec<PlaneRow> = planes.iter().map(|p| PlaneRow {
-                id: p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                kind: p.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                total: format_bytes(p.get("total_memory").and_then(|v| v.as_u64()).unwrap_or(0)),
-                available: format_bytes(p.get("available_memory").and_then(|v| v.as_u64()).unwrap_or(0)),
-                triage: if p.get("is_triage_reserved").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    "● RESERVED (sentry)".red().bold().to_string()
-                } else {
-                    "shared".dimmed().to_string()
-                },
-            }).collect();
-            let mut table = Table::new(rows);
-            table.with(Style::rounded());
-            println!("\n{}", table);
-        }
-
-        println!("\n{}", "Kernel Pressure Stall Information (PSI):".bold().underline());
-        println!(
-            "  Memory Stall: {:.2}% | CPU Stall: {:.2}% | IO Stall: {:.2}%",
-            pressure.get("memory_some").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            pressure.get("cpu_some").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            pressure.get("io_some").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        );
-        return Ok(());
-    }
-
-    // Fallback: daemon not running
     if json_out {
-        println!("{}", serde_json::json!({ "daemon": "inactive" }));
+        let combined = serde_json::json!({
+            "daemon": "active (running)",
+            "topology": topo,
+            "pressure": pressure,
+            "leases": leases,
+        });
+        println!("{}", serde_json::to_string_pretty(&combined)?);
         return Ok(());
     }
+
     println!("{}", "● systemd-inferenced.service - Heterogeneous AI Compute Fabric".bold());
-    println!("     Status: {}", "inactive (daemon offline - showing local hardware probe)".yellow().bold());
-    let topo = HardwareTopology::discover()?;
-    println!("  Discovered {} compute planes (local probe)", topo.planes.len());
+    println!("     Status: {}", "active (running via Varlink IPC)".green().bold());
+
+    if let Some(planes) = topo.get("planes").and_then(|v| v.as_array()) {
+        let rows: Vec<PlaneRow> = planes.iter().map(|p| PlaneRow {
+            id: p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            kind: p.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            total: format_bytes(p.get("total_memory").and_then(|v| v.as_u64()).unwrap_or(0)),
+            available: format_bytes(p.get("available_memory").and_then(|v| v.as_u64()).unwrap_or(0)),
+            triage: if p.get("is_triage_reserved").and_then(|v| v.as_bool()).unwrap_or(false) {
+                "● RESERVED (sentry)".red().bold().to_string()
+            } else {
+                "shared".dimmed().to_string()
+            },
+        }).collect();
+        let mut table = Table::new(rows);
+        table.with(Style::rounded());
+        println!("\n{}", table);
+    }
+
+    println!("\n{}", "Kernel Pressure Stall Information (PSI):".bold().underline());
+    println!(
+        "  Memory Stall: {:.2}% | CPU Stall: {:.2}% | IO Stall: {:.2}%",
+        pressure.get("memory_some").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        pressure.get("cpu_some").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        pressure.get("io_some").and_then(|v| v.as_f64()).unwrap_or(0.0),
+    );
     Ok(())
 }
 
 pub fn run_planes(socket_path: impl AsRef<Path>, json_out: bool) -> Result<()> {
-    if let Ok(mut client) = VarlinkClient::connect(socket_path.as_ref()) {
-        let topo = client.get_topology()?;
-        if json_out {
-            println!("{}", serde_json::to_string_pretty(&topo)?);
-            return Ok(());
-        }
-        if let Some(planes) = topo.get("planes").and_then(|v| v.as_array()) {
-            let rows: Vec<PlaneRow> = planes.iter().map(|p| PlaneRow {
-                id: p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                kind: p.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                total: format_bytes(p.get("total_memory").and_then(|v| v.as_u64()).unwrap_or(0)),
-                available: format_bytes(p.get("available_memory").and_then(|v| v.as_u64()).unwrap_or(0)),
-                triage: if p.get("is_triage_reserved").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    "YES".into()
-                } else {
-                    "NO".into()
-                },
-            }).collect();
-            let mut table = Table::new(rows);
-            table.with(Style::rounded());
-            println!("{}", table);
-        }
+    let mut client = VarlinkClient::connect(socket_path.as_ref())?;
+    let topo = client.get_topology()?;
+    if json_out {
+        println!("{}", serde_json::to_string_pretty(&topo)?);
         return Ok(());
     }
-    let topo = HardwareTopology::discover()?;
-    let rows: Vec<PlaneRow> = topo.planes.iter().map(|p| PlaneRow {
-        id: p.id.clone(),
-        kind: format!("{:?}", p.kind),
-        total: format_bytes(p.total_memory_bytes),
-        available: format_bytes(p.available_memory_bytes),
-        triage: if p.is_triage_reserved { "YES".into() } else { "NO".into() },
-    }).collect();
-    let mut table = Table::new(rows);
-    table.with(Style::rounded());
-    println!("{}", table);
+    if let Some(planes) = topo.get("planes").and_then(|v| v.as_array()) {
+        let rows: Vec<PlaneRow> = planes.iter().map(|p| PlaneRow {
+            id: p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            kind: p.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            total: format_bytes(p.get("total_memory").and_then(|v| v.as_u64()).unwrap_or(0)),
+            available: format_bytes(p.get("available_memory").and_then(|v| v.as_u64()).unwrap_or(0)),
+            triage: if p.get("is_triage_reserved").and_then(|v| v.as_bool()).unwrap_or(false) {
+                "YES".into()
+            } else {
+                "NO".into()
+            },
+        }).collect();
+        let mut table = Table::new(rows);
+        table.with(Style::rounded());
+        println!("{}", table);
+    }
     Ok(())
 }
 

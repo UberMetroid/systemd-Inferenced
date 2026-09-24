@@ -1,7 +1,7 @@
 use inferenced_core::{
     arbiter::Arbiter,
     freezer::{send_cooperative_yield_signal, signal_process},
-    lease::{ComputeLease, LeaseId, LeasePriority, LeaseState},
+    lease::{LeasePriority, LeaseState},
     topology::{ComputePlane, ComputePlaneKind, HardwareTopology},
 };
 use rustix::process::Signal;

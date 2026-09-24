@@ -1,6 +1,6 @@
 use inferenced_core::{
     arbiter::Arbiter,
-    lease::{LeasePriority, LeaseState},
+    lease::LeasePriority,
     topology::{ComputePlane, ComputePlaneKind, HardwareTopology},
 };
 use serde::{Deserialize, Serialize};

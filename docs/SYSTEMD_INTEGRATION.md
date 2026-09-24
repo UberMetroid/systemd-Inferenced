@@ -1,35 +1,94 @@
 # systemd Integration Guide for systemd-inferenced
 
-## 1. Slices & cgroups v2 Hierarchy
+`systemd-inferenced` is designed for zero-trust Linux environments, integrating natively with systemd primitives in 100% pure Rust without linking to `libsystemd.so` or `libdbus-1.so`.
 
-`systemd-inferenced` relies on cgroups v2 to enforce resource bounds:
+---
+
+## 1. Slices & cgroups v2 Resource Hierarchy
+
+All inference tasks and daemon processes run under the `ai.slice` hierarchy:
 
 ```text
 /sys/fs/cgroup/ai.slice
-├── ai-sentry.slice           # Dedicated emergency supervisor enclave
-│   ├── MemoryMin=2G          # Guaranteed locked host RAM
-│   ├── CPUWeight=1000        # Real-time scheduling priority
-│   └── ManagedOOMPreference=avoid
-├── ai-interactive.slice      # User chat and tool-calling completions
+├── systemd-inferenced.service # Daemon lifecycle broker (ManagedOOMPreference=avoid)
+├── ai-sentry.slice            # Out-of-band triage enclave
+│   ├── MemoryMin=2G           # Guaranteed locked host RAM
+│   ├── CPUWeight=1000         # Maximum scheduling weight
+│   ├── ManagedOOMPreference=avoid
+│   └── ManagedOOMMemoryPressureLimit=95%
+├── ai-interactive.slice       # Low-latency interactive chat / tool-use
 │   ├── CPUWeight=500
 │   └── MemoryHigh=70%
-└── ai-batch.slice            # Offline bulk diffusion, embeddings, Whisper
+└── ai-batch.slice             # Offline background batch embeddings / diffusion
     ├── CPUWeight=50
     └── MemoryHigh=50%
 ```
 
-## 2. Socket Activation (`sd_listen_fds`)
+---
 
-`systemd-inferenced.socket` manages listener streams on behalf of engines:
-* `/run/systemd-inferenced/sentry.sock`: Dedicated triage connection for `systemd-sentry`.
-* `127.0.0.1:11434`: Local OpenAI/Ollama-compatible gateway.
-* `/run/systemd-inferenced/io.systemd.inferenced1`: Varlink IPC socket.
+## 2. Pure Rust Socket Activation (`$LISTEN_FDS`)
 
-## 3. Sandboxing & Zero-Trust Privileges
+The daemon uses pure Rust (`rustix`) to adopt pre-bound file descriptors passed by systemd at startup:
 
-The daemon executes as an unprivileged system user (`inferenced:inferenced`):
-* `ProtectSystem=strict`
-* `ProtectHome=yes`
-* `MemoryDenyWriteExecute=yes`
-* `NoNewPrivileges=yes`
-* Group membership: `render` and `video` for access to `/dev/dri/renderD*` and `/dev/accel/*`.
+| File Descriptor | Socket Type | Path / Address | Purpose |
+|-----------------|-------------|----------------|---------|
+| `FD 3` | `AF_UNIX` Stream | `/run/systemd-inferenced/io.systemd.inferenced1` | Native Varlink IPC |
+| `FD 4` | `AF_UNIX` Stream | `/run/systemd-inferenced/sentry.sock` | Sentry Emergency Triage |
+| `FD 5` | `AF_INET` TCP | `127.0.0.1:11434` | OpenAI/Ollama HTTP Gateway |
+
+This ensures the daemon starts instantaneously on incoming requests with zero port collisions.
+
+---
+
+## 3. Abstract Linux Socket Notifications (`sd_notify`)
+
+`systemd-inferenced` signals daemon readiness and health directly over `$NOTIFY_SOCKET`:
+- `READY=1`: Emitted once compute planes are enumerated and listeners active.
+- `STATUS=...`: Operational heartbeat reporting active leases and memory load.
+- `STOPPING=1`: Emitted during graceful SIGINT/SIGTERM shutdown.
+
+All notification packets are written via datagram send to Linux abstract sockets (`@...`) with zero external C dependencies.
+
+---
+
+## 4. Security Sandboxing & Least Privilege
+
+The daemon runs under an unprivileged user (`inferenced:inferenced`) with extensive sandboxing:
+
+* **Filesystem Isolation**:
+  - `ProtectSystem=strict`: The entire host filesystem is mounted read-only.
+  - `ProtectHome=yes`: `/home`, `/root`, and `/run/user` are inaccessible.
+  - `PrivateTmp=yes`: Isolated `/tmp` and `/var/tmp` namespaces.
+  - `RuntimeDirectory=systemd-inferenced`: Manages `/run/systemd-inferenced/`.
+  - `StateDirectory=systemd-inferenced`: Manages `/var/lib/systemd-inferenced/`.
+* **Kernel & Memory Protection**:
+  - `NoNewPrivileges=yes`: Prevents privilege escalation.
+  - `MemoryDenyWriteExecute=yes`: Prohibits creating executable memory pages.
+  - `ProtectKernelModules=yes` & `ProtectKernelTunables=yes`: Locks kernel knobs.
+  - `ProtectControlGroups=yes`: Mounts cgroup controllers read-only.
+  - `LockPersonality=yes`: Disables legacy execution domain emulation.
+* **Device Access Whitelisting**:
+  - `DeviceAllow=/dev/dri/renderD* rw`: Discrete and integrated GPU compute.
+  - `DeviceAllow=/dev/accel/* rw`: Linux NPU subsystem devices.
+  - `DeviceAllow=/dev/hailo* rw`: Hailo NPU acceleration devices.
+  - `DeviceAllow=/dev/kfd rw`: AMD ROCm Kernel Fusion Driver.
+* **OOM Killer Immunity**:
+  - `ManagedOOMPreference=avoid`: Ensures `systemd-oomd` sacrifices user-space batch tasks before terminating the hardware broker.
+
+---
+
+## 5. Operations & Troubleshooting
+
+```bash
+# Verify systemd units syntax
+systemd-analyze verify /usr/lib/systemd/system/systemd-inferenced.*
+
+# Check socket activation status
+systemctl status systemd-inferenced.socket
+
+# Inspect security sandboxing score
+systemd-analyze security systemd-inferenced.service
+
+# View daemon journal logs
+journalctl -u systemd-inferenced.service -f
+```

@@ -46,8 +46,8 @@ fn test_discovery_build_cpu_plane() {
     let plane = cpu::build_cpu_plane(file.path().to_str().unwrap(), 32 * 1024 * 1024 * 1024);
     assert_eq!(plane.kind, ComputePlaneKind::CpuMatrixExtension);
     assert_eq!(plane.id, "cpu-host");
-    assert!(plane.hardware_features.contains(&"AMX-Tile".to_string()));
-    assert!(plane.hardware_features.contains(&"AVX-512-VNNI".to_string()));
+    assert!(plane.hardware_features.contains(&"Intel-AMX".to_string()));
+    assert!(plane.hardware_features.contains(&"AVX512-VNNI".to_string()));
     assert!(plane.hardware_features.contains(&"AVX2-FMA".to_string()));
 }
 
