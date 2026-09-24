@@ -5,6 +5,8 @@ use inferenced_core::{
 };
 use std::sync::Arc;
 
+mod varlink_fuzz;
+
 #[test]
 fn test_fuzz_parse_kb_with_random_garbage() {
     let fuzzed_inputs = vec![

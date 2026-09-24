@@ -1,0 +1,14 @@
+[Unit]
+Description=AI Batch Processing Low-Priority Workloads Slice
+Documentation=https://github.com/UberMetroid/systemd-Inferenced
+Before=slices.target
+
+[Slice]
+# Low-priority background AI workloads (embedding, dataset indexing, offline generation)
+# Subordinate to ai.slice and ai-sentry.slice. Rapidly suspendable via cgroup.freeze.
+CPUWeight=20
+IOWeight=20
+MemoryLow=512M
+MemoryHigh=70%
+MemoryMax=85%
+ManagedOOMPreference=omit

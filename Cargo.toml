@@ -23,7 +23,7 @@ zbus = { version = "5.19", default-features = false, features = ["tokio"] }
 
 # Pure Rust async runtime & Linux system interfaces (zero libsystemd.so)
 tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "signal", "time", "process", "sync"] }
-rustix = { version = "0.38", features = ["fs", "net", "process", "event", "system"] }
+rustix = { version = "0.38", features = ["fs", "net", "process", "event", "system", "mm"] }
 
 # CLI & Formatting
 clap = { version = "4.5", features = ["derive", "env", "cargo"] }

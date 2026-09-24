@@ -10,6 +10,10 @@ use std::io::Write;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
 
+mod fd_tests;
+mod freezer_tests;
+mod madvise_tests;
+
 #[test]
 fn test_parse_kb() {
     assert_eq!(cpu::parse_kb("1024 kB"), 1024 * 1024);
@@ -116,7 +120,12 @@ fn test_assign_triage_enclave_falls_back_to_cpu() {
 
     let reserved = triage::assign_triage_enclave(&mut planes);
     assert_eq!(reserved, Some("cpu-host".into()));
-    assert!(planes[0].is_triage_reserved);
+    assert!(!planes[0].is_triage_reserved, "CPU plane must remain accessible to general workloads");
+    assert_eq!(
+        planes[0].available_memory_bytes,
+        14 * 1024 * 1024 * 1024,
+        "CPU plane must have 2GB reserved quota for emergency triage"
+    );
 }
 
 #[tokio::test]

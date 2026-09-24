@@ -7,6 +7,9 @@ use inferenced_core::{
 use std::io::Write;
 use tempfile::NamedTempFile;
 
+mod dead_client_reclaim;
+mod preemption_storm;
+
 #[tokio::test]
 async fn test_edge_insufficient_memory_rejection() {
     let mut topo = HardwareTopology::default();

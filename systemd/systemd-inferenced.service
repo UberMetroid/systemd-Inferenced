@@ -14,17 +14,27 @@ Slice=ai.slice
 # Security & Sandboxing
 User=inferenced
 Group=inferenced
-SupplementaryGroups=render video
+SupplementaryGroups=render video sentry
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
-RuntimeDirectory=systemd-inferenced
-ConfigurationDirectory=systemd/inferenced.conf.d
-StateDirectory=systemd-inferenced
-LogsDirectory=systemd-inferenced
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
 MemoryDenyWriteExecute=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# Directories
+RuntimeDirectory=systemd-inferenced
+RuntimeDirectoryMode=0755
+ConfigurationDirectory=systemd/inferenced.conf.d
+StateDirectory=systemd-inferenced
+LogsDirectory=systemd-inferenced
 
 # Linux Device Permissions (DRM & Accel)
 DeviceAllow=/dev/dri/renderD* rw

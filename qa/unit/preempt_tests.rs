@@ -1,0 +1,120 @@
+use inferenced_core::{
+    arbiter::Arbiter,
+    freezer::{send_cooperative_yield_signal, signal_process},
+    lease::{ComputeLease, LeaseId, LeasePriority, LeaseState},
+    topology::{ComputePlane, ComputePlaneKind, HardwareTopology},
+};
+use rustix::process::Signal;
+
+fn make_test_arbiter(capacity_bytes: u64) -> Arbiter {
+    let mut topo = HardwareTopology::default();
+    topo.planes.push(ComputePlane {
+        id: "plane-test-gpu".into(),
+        name: "Test Discrete GPU".into(),
+        kind: ComputePlaneKind::DiscreteGpu,
+        device_path: None,
+        total_memory_bytes: capacity_bytes,
+        available_memory_bytes: capacity_bytes,
+        numa_node: None,
+        supported_formats: vec![],
+        is_triage_reserved: false,
+        hardware_features: vec![],
+    });
+    Arbiter::new(topo)
+}
+
+#[tokio::test]
+async fn test_preempt_cooperative_yield_state_transition() {
+    let arbiter = make_test_arbiter(8 * 1024 * 1024 * 1024);
+    let lease = arbiter
+        .acquire_lease(LeasePriority::Batch, 2 * 1024 * 1024 * 1024, None, None, None)
+        .await
+        .expect("Acquire should succeed");
+
+    assert_eq!(lease.state, LeaseState::Active);
+    arbiter.yield_lease(lease.id).await.expect("Yield should succeed");
+
+    let updated = arbiter.get_lease(lease.id).await.expect("Lease exists");
+    assert_eq!(updated.state, LeaseState::Preempting);
+}
+
+#[tokio::test]
+async fn test_preempt_freeze_and_thaw_lease_state() {
+    let arbiter = make_test_arbiter(8 * 1024 * 1024 * 1024);
+    let lease = arbiter
+        .acquire_lease(LeasePriority::Batch, 1024 * 1024 * 1024, None, None, None)
+        .await
+        .unwrap();
+
+    arbiter.freeze_lease(lease.id).await.unwrap();
+    let frozen = arbiter.get_lease(lease.id).await.unwrap();
+    assert_eq!(frozen.state, LeaseState::Frozen);
+
+    arbiter.thaw_lease(lease.id).await.unwrap();
+    let thawed = arbiter.get_lease(lease.id).await.unwrap();
+    assert_eq!(thawed.state, LeaseState::Active);
+}
+
+#[tokio::test]
+async fn test_preempt_priority_preemption_reclaims_memory() {
+    let total_bytes = 4 * 1024 * 1024 * 1024;
+    let arbiter = make_test_arbiter(total_bytes);
+
+    // 1. Fill memory with Batch priority lease
+    let batch_lease = arbiter
+        .acquire_lease(LeasePriority::Batch, total_bytes, None, Some("batch.service".into()), None)
+        .await
+        .expect("Batch lease acquire");
+
+    let topo_before = arbiter.get_topology().await;
+    assert_eq!(topo_before.planes[0].available_memory_bytes, 0);
+
+    // 2. High priority Interactive lease arrives, forcing preemption of batch lease
+    let high_prio_lease = arbiter
+        .acquire_lease(LeasePriority::Interactive, total_bytes, None, Some("user.service".into()), None)
+        .await
+        .expect("Interactive lease should preempt batch lease");
+
+    assert_eq!(high_prio_lease.priority, LeasePriority::Interactive);
+
+    let batch_after = arbiter.get_lease(batch_lease.id).await.expect("Batch lease status");
+    assert_eq!(batch_after.state, LeaseState::Preempted);
+}
+
+#[tokio::test]
+async fn test_preempt_cooperative_yield_signal_dispatch() {
+    // Attempting to signal a non-existent PID (e.g. 999999) safely returns error
+    let res = send_cooperative_yield_signal(999999);
+    assert!(res.is_err(), "Non-existent PID signal should return error");
+
+    // Attempting with PID 0 / invalid
+    let res_zero = signal_process(0, Signal::Usr1);
+    // rustix Pid::from_raw(0) returns None
+    assert!(res_zero.is_err());
+}
+
+#[tokio::test]
+async fn test_preempt_multiple_lower_priority_leases_preempted_in_order() {
+    let total_bytes = 6 * 1024 * 1024 * 1024;
+    let arbiter = make_test_arbiter(total_bytes);
+
+    // Acquire two batch leases of 2GB each
+    let b1 = arbiter
+        .acquire_lease(LeasePriority::Batch, 2 * 1024 * 1024 * 1024, None, None, None)
+        .await
+        .unwrap();
+    let b2 = arbiter
+        .acquire_lease(LeasePriority::Batch, 2 * 1024 * 1024 * 1024, None, None, None)
+        .await
+        .unwrap();
+
+    // Now request 5GB with Interactive priority - both batch leases must be preempted
+    let high = arbiter
+        .acquire_lease(LeasePriority::Interactive, 5 * 1024 * 1024 * 1024, None, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(high.state, LeaseState::Active);
+    assert_eq!(arbiter.get_lease(b1.id).await.unwrap().state, LeaseState::Preempted);
+    assert_eq!(arbiter.get_lease(b2.id).await.unwrap().state, LeaseState::Preempted);
+}

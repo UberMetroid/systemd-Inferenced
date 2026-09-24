@@ -30,6 +30,8 @@ pub enum LeasePriority {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LeaseState {
     Active,
+    Preempting,
+    Frozen,
     Preempted,
     Revoked,
     Expired,
@@ -70,6 +72,9 @@ impl ComputeLease {
     }
 
     pub fn is_active(&self) -> bool {
-        self.state == LeaseState::Active
+        matches!(
+            self.state,
+            LeaseState::Active | LeaseState::Preempting | LeaseState::Frozen
+        )
     }
 }

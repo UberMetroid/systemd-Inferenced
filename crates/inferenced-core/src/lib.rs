@@ -3,14 +3,25 @@
 
 pub mod arbiter;
 pub mod error;
+pub mod fd_lease;
+pub mod freezer;
 pub mod lease;
+pub mod madvise;
 pub mod model;
 pub mod psi;
 pub mod topology;
 
-pub use arbiter::Arbiter;
+pub use arbiter::{Arbiter, ArbiterState};
 pub use error::{Error, Result};
+pub use fd_lease::{create_sealed_memfd, recv_fd_from_unix, send_fd_over_unix};
+pub use freezer::{
+    freeze_cgroup, freeze_process_signal, is_cgroup_frozen, send_cooperative_yield_signal,
+    signal_process, thaw_cgroup, thaw_process_signal, FreezeState,
+};
 pub use lease::{ComputeLease, LeaseId, LeasePriority, LeaseState};
+pub use madvise::{
+    advise_dontneed, advise_hugepage, advise_random, advise_sequential, advise_willneed,
+};
 pub use model::{ModelDescriptor, ModelPlacementState, ModelRegistry};
 pub use psi::{PressureLevel, PressureMetrics};
 pub use topology::{ComputePlane, ComputePlaneKind, HardwareTopology};

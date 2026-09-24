@@ -30,6 +30,18 @@ pub enum Error {
     #[error("Engine communication error: {0}")]
     EngineCommunication(String),
 
+    #[error("Zero-copy FD error: {0}")]
+    Fd(String),
+
+    #[error("Cgroup freezer error: {0}")]
+    Freezer(String),
+
+    #[error("Madvise page management error: {0}")]
+    Madvise(String),
+
+    #[error("System call error: {0}")]
+    SystemCall(#[from] rustix::io::Errno),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 

@@ -11,3 +11,6 @@ Cargo.lock
 # Logs & sockets
 *.log
 *.sock
+
+# Agent scratch metadata
+.agents/
