@@ -15,6 +15,11 @@ SocketGroup=sentry
 # File Descriptor 5: Local OpenAI/Ollama gateway socket
 ListenStream=127.0.0.1:11434
 
+# File Descriptor 6: SCM_RIGHTS Zero-Copy Memfd Server socket
+ListenStream=/run/systemd-inferenced/fd.sock
+SocketMode=0660
+SocketGroup=inferenced
+
 # Ensure runtime directory /run/systemd-inferenced is provisioned
 RuntimeDirectory=systemd-inferenced
 RuntimeDirectoryMode=0755

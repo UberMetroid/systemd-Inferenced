@@ -129,8 +129,37 @@ impl MemfdPaging {
         crate::madvise::advise_dontdump(addr, len)
     }
 
+    /// Maps a received memfd into the process address space with PROT_READ and MAP_SHARED,
+    /// and automatically invokes `MADV_DONTDUMP` to protect systemd-coredump from multi-GB dumps.
+    pub fn map_and_protect_memfd<F: AsFd>(fd: &F, len: usize) -> Result<*mut c_void> {
+        let ptr = unsafe {
+            rustix::mm::mmap(
+                std::ptr::null_mut(),
+                len,
+                rustix::mm::ProtFlags::READ,
+                rustix::mm::MapFlags::SHARED,
+                fd,
+                0,
+            )
+        }
+        .map_err(Error::SystemCall)?;
+
+        crate::madvise::advise_dontdump(ptr, len)?;
+        Ok(ptr)
+    }
+
+    /// Unmaps a previously mapped memory region.
+    ///
+    /// # Safety
+    /// The caller must ensure that `addr` and `len` correspond to a valid mapped region
+    /// and that the memory is no longer referenced.
+    pub unsafe fn unmap_memfd(addr: *mut c_void, len: usize) -> Result<()> {
+        rustix::mm::munmap(addr, len).map_err(Error::SystemCall)
+    }
+
     /// Read live system zswap metrics.
     pub fn read_zswap_metrics() -> ZswapMetrics {
         ZswapMetrics::read_current()
     }
 }
+

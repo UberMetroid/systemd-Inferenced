@@ -111,3 +111,20 @@ fn test_fd_lease_wrapper_methods() {
     assert_eq!(n, 6);
     assert!(opt_fd.is_some());
 }
+
+#[test]
+fn test_map_and_protect_memfd_lifecycle() {
+    let data = b"memfd-mmap-dontdump-protection-payload";
+    let fd = MemfdPaging::create_sealed_model("test_protect_mmap", data).unwrap();
+
+    let ptr = MemfdPaging::map_and_protect_memfd(&fd, data.len()).unwrap();
+    assert!(!ptr.is_null());
+
+    let mapped_slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, data.len()) };
+    assert_eq!(mapped_slice, data);
+
+    unsafe {
+        MemfdPaging::unmap_memfd(ptr, data.len()).unwrap();
+    }
+}
+

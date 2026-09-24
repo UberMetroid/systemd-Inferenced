@@ -132,16 +132,33 @@ async fn main() -> anyhow::Result<()> {
 
     notify::notify_systemd_ready();
 
+    // Systemd Watchdog keepalive loop (pings every 10s for WatchdogSec=30s)
+    let watchdog_task = tokio::spawn(async {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            notify::notify_systemd_watchdog();
+        }
+    });
+
     serve_gateway(gateway_listener, app, shutdown_signal()).await?;
 
+    watchdog_task.abort();
     notify::notify_systemd_stopping();
     info!("systemd-inferenced daemon terminated cleanly.");
     Ok(())
 }
 
 async fn shutdown_signal() {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to install CTRL+C signal handler");
-    info!("Termination signal received, shutting down gracefully...");
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("failed to install SIGTERM handler");
+
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            info!("Termination signal SIGINT received, shutting down gracefully...");
+        }
+        _ = sigterm.recv() => {
+            info!("Termination signal SIGTERM from systemd received, shutting down gracefully...");
+        }
+    }
 }

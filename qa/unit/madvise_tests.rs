@@ -139,3 +139,29 @@ fn test_madvise_dontdump_excludes_from_coredump() {
     }
 }
 
+#[test]
+fn test_map_and_protect_memfd_lifecycle() {
+    let initial_data = b"model_weights_test_tensor";
+    let memfd = inferenced_core::fd_lease::create_sealed_memfd(
+        "test_weights",
+        initial_data.len() as u64,
+        Some(initial_data),
+    )
+    .expect("create_sealed_memfd should succeed");
+
+    let ptr = inferenced_core::paging::MemfdPaging::map_and_protect_memfd(
+        &memfd,
+        initial_data.len(),
+    )
+    .expect("map_and_protect_memfd should succeed");
+
+    assert!(!ptr.is_null());
+    let slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, initial_data.len()) };
+    assert_eq!(slice, initial_data);
+
+    unsafe {
+        inferenced_core::paging::MemfdPaging::unmap_memfd(ptr, initial_data.len())
+            .expect("unmap_memfd should succeed");
+    }
+}
+

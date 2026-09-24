@@ -9,6 +9,7 @@ Type=notify
 ExecStart=/usr/bin/systemd-inferenced
 Restart=on-failure
 RestartSec=3s
+WatchdogSec=30s
 Slice=ai.slice
 
 # Security & Sandboxing
@@ -45,6 +46,7 @@ DeviceAllow=/dev/kfd rw
 # cgroup v2 & systemd-oomd Protection
 ManagedOOMPreference=avoid
 OOMScoreAdjust=-900
+OOMPolicy=stop
 
 # Logging & systemd-journald
 StandardOutput=journal

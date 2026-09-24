@@ -14,4 +14,5 @@ MemoryMax=85%
 ManagedOOMPreference=none
 ManagedOOMMemoryPressure=kill
 ManagedOOMMemoryPressureLimit=60%
+ManagedOOMMemoryPressureDurationSec=2s
 ManagedOOMSwap=kill
