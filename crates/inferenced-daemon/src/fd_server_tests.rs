@@ -86,13 +86,13 @@ async fn test_fd_server_quota_enforced() {
     let dir = tempdir().unwrap();
     let sock_path = dir.path().join("quota.sock");
     let listener = UnixListener::bind(&sock_path).unwrap();
-    // 1 MiB ceiling so the second request fails.
+    // 1 MiB ceiling so two simultaneous requests must reject.
     let quota = Arc::new(FdQuota::new(1024 * 1024));
     tokio::spawn(async move {
         let _ = run_fd_server_with_quota(listener, quota.clone()).await;
     });
 
-    // First request: 768 KiB, fits.
+    // First request: 768 KiB, fits alone.
     let mut c1 = UnixStream::connect(&sock_path).await.unwrap();
     write_framed(
         &mut c1,
@@ -102,16 +102,35 @@ async fn test_fd_server_quota_enforced() {
     c1.readable().await.unwrap();
     let mut buf = [0u8; 512];
     let (_b, fd1) = recv_fd_from_unix(&c1, &mut buf).unwrap();
-    assert!(fd1.is_some());
+    assert!(fd1.is_some(), "first request fits in 1 MiB quota");
 
-    // Second request: 512 KiB would push total past 1 MiB.
+    // After the first request the reservation is released on
+    // successful handoff, so a second 768 KiB request also fits.
     let mut c2 = UnixStream::connect(&sock_path).await.unwrap();
     write_framed(
         &mut c2,
-        serde_json::json!({ "action": "create", "size_bytes": 512 * 1024 }),
+        serde_json::json!({ "action": "create", "size_bytes": 768 * 1024 }),
     )
     .await;
-    let resp = read_framed_response(&mut c2).await;
+    c2.readable().await.unwrap();
+    let mut buf2 = [0u8; 512];
+    let (_b, fd2) = recv_fd_from_unix(&c2, &mut buf2).unwrap();
+    assert!(
+        fd2.is_some(),
+        "second 768 KiB request fits: in-flight semantics release on success"
+    );
+
+    // A third request larger than the 1 MiB quota (1 MiB + 1 byte)
+    // is rejected by the quota check. Note that this also passes the
+    // per-request MAX_MEMFD_BYTES check (16 GiB), so the rejection
+    // comes from the quota, not the size cap.
+    let mut c3 = UnixStream::connect(&sock_path).await.unwrap();
+    write_framed(
+        &mut c3,
+        serde_json::json!({ "action": "create", "size_bytes": 1024 * 1024 + 1 }),
+    )
+    .await;
+    let resp = read_framed_response(&mut c3).await;
     assert_eq!(resp.status, "error");
     assert!(resp.message.unwrap().contains("Quota exceeded"));
 }

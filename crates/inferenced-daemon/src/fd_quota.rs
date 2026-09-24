@@ -1,11 +1,13 @@
 //! Per-listener memfd allocation quota for the SCM_RIGHTS handoff server.
 //!
-//! The quota is per-listener and tracks bytes currently reserved by
-//! in-flight memfd allocations. A request that would push the total
-//! past the ceiling is rejected with `Quota exceeded` rather than
-//! silently OOMing the daemon. Bytes are released when the SCM_RIGHTS
-//! send fails; on success the kernel cmsg buffer inherits the FD and
-//! the reservation stays consumed.
+//! The quota is per-listener and bounds concurrent in-flight memfd
+//! allocations. A request that would push the total past the ceiling
+//! is rejected with `Quota exceeded` rather than silently OOMing the
+//! daemon. A reservation is held from `try_reserve` until `release` is
+//! called: on successful SCM_RIGHTS send the kernel cmsg buffer and
+//! the recipient inherit the FD, so the server-side reservation is
+//! released; on send failure the reservation is also released because
+//! the server-side memfd is dropped.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -112,5 +114,20 @@ mod tests {
         // Clamp: even if amount > allocated, must not underflow.
         q.release(10_000);
         assert_eq!(q.try_reserve(1000).unwrap(), 1000);
+    }
+
+    #[test]
+    fn test_quota_concurrent_in_flight_rejected() {
+        // Verifies the in-flight semantics: two simultaneous
+        // reservations that together exceed the ceiling must reject
+        // the second, even though neither reservation has been
+        // released yet.
+        let q = FdQuota::new(1000);
+        let r1 = q.try_reserve(700).unwrap();
+        // First reservation still held: second must be denied.
+        assert_eq!(q.try_reserve(500).unwrap_err(), 700);
+        // Release first: second now fits.
+        q.release(r1);
+        assert_eq!(q.try_reserve(500).unwrap(), 500);
     }
 }

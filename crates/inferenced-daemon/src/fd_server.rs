@@ -135,9 +135,12 @@ async fn handle_connection(
                 "Transferred sealed memfd '{}' ({} bytes) to client",
                 name, size
             );
-            // On success the memfd is owned by the kernel cmsg buffer;
-            // the recipient inherits the FD and our handle is consumed.
-            // Do NOT release the quota.
+            // The memfd is now owned by the kernel cmsg buffer; the
+            // recipient inherits the FD and our `memfd` handle is
+            // consumed by send_fd_over_unix. Release the in-flight
+            // reservation so the listener's quota tracks concurrent
+            // allocations, not lifetime allocations.
+            quota.release(reserved);
         }
         Err(e) => {
             error!(
