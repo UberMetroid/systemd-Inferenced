@@ -1,5 +1,5 @@
 [package]
-name = "syntropd-inferenced"
+name = "syntrop-inferenced"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
