@@ -2,9 +2,12 @@ use inferenced_core::fd_lease::{create_sealed_memfd, send_fd_over_unix};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
-use tracing::{error, info};
+use tracing::{error, info, warn};
+
+pub use crate::fd_quota::{FdQuota, MAX_MEMFD_BYTES};
 
 pub const DEFAULT_FD_SOCKET_PATH: &str = "/run/systemd-inferenced/fd.sock";
 
@@ -21,84 +24,169 @@ pub struct FdResponse {
     pub message: Option<String>,
 }
 
+/// Runs the FD handoff listener with a half-of-RAM quota.
 pub async fn run_fd_server(listener: UnixListener) -> anyhow::Result<()> {
+    run_fd_server_with_quota(listener, Arc::new(FdQuota::from_half_of_total_ram())).await
+}
+
+/// Variant that accepts an explicit `FdQuota` for tests and embedded
+/// users that want to override the default RAM-based ceiling.
+pub async fn run_fd_server_with_quota(
+    listener: UnixListener,
+    quota: Arc<FdQuota>,
+) -> anyhow::Result<()> {
     loop {
-        let (mut stream, _) = listener.accept().await?;
+        let (stream, _) = listener.accept().await?;
+        let quota_clone = quota.clone();
         tokio::spawn(async move {
-            let mut buf = [0u8; 1024];
-            let n = match stream.read(&mut buf).await {
-                Ok(n) if n > 0 => n,
-                _ => return,
-            };
-
-            let req: FdRequest = match serde_json::from_slice(&buf[..n]) {
-                Ok(r) => r,
-                Err(e) => {
-                    let resp = FdResponse {
-                        status: "error".into(),
-                        message: Some(format!("Invalid JSON request: {}", e)),
-                    };
-                    if let Ok(bytes) = serde_json::to_vec(&resp) {
-                        let _ = stream.write_all(&bytes).await;
-                    }
-                    return;
-                }
-            };
-
-            if req.action == "create" || req.action == "lease" {
-                let name = req.name.unwrap_or_else(|| "inferenced-shm".into());
-                let size = req.size_bytes.unwrap_or(4 * 1024 * 1024); // default 4MB
-
-                const MAX_MEMFD_BYTES: u64 = 16 * 1024 * 1024 * 1024; // 16GB ceiling
-                if size > MAX_MEMFD_BYTES {
-                    let resp = FdResponse {
-                        status: "error".into(),
-                        message: Some(format!("Requested size {} exceeds limit of 16GB", size)),
-                    };
-                    if let Ok(bytes) = serde_json::to_vec(&resp) {
-                        let _ = stream.write_all(&bytes).await;
-                    }
-                    return;
-                }
-
-                match create_sealed_memfd(&name, size, None) {
-                    Ok(memfd) => {
-                        let resp = FdResponse {
-                            status: "ok".into(),
-                            message: Some(format!("Created sealed memfd '{}' ({} bytes)", name, size)),
-                        };
-                        let payload = serde_json::to_vec(&resp).unwrap_or_default();
-                        let _ = stream.writable().await;
-                        if let Err(e) = send_fd_over_unix(&stream, &memfd, &payload) {
-                            error!("Failed to pass fd over SCM_RIGHTS: {}", e);
-                        } else {
-                            info!("Successfully passed sealed memfd '{}' to client", name);
-                        }
-                    }
-                    Err(e) => {
-                        let resp = FdResponse {
-                            status: "error".into(),
-                            message: Some(format!("Failed to create sealed memfd: {}", e)),
-                        };
-                        if let Ok(bytes) = serde_json::to_vec(&resp) {
-                            let _ = stream.write_all(&bytes).await;
-                        }
-                    }
-                }
-            } else {
-                let resp = FdResponse {
-                    status: "error".into(),
-                    message: Some(format!(
-                        "Unknown action '{}'. Supported actions: 'create', 'lease'",
-                        req.action
-                    )),
-                };
-                if let Ok(bytes) = serde_json::to_vec(&resp) {
-                    let _ = stream.write_all(&bytes).await;
-                }
+            if let Err(e) = handle_connection(stream, quota_clone).await {
+                warn!("FD handoff client error: {}", e);
             }
         });
     }
+}
+
+async fn handle_connection(
+    mut stream: tokio::net::UnixStream,
+    quota: Arc<FdQuota>,
+) -> anyhow::Result<()> {
+    let mut scratch = Vec::with_capacity(4096);
+    let req: FdRequest = match read_framed_request(&mut stream, &mut scratch).await? {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
+    if req.action != "create" && req.action != "lease" {
+        return write_response(
+            &mut stream,
+            &FdResponse {
+                status: "error".into(),
+                message: Some(format!(
+                    "Unknown action '{}'. Supported actions: 'create', 'lease'",
+                    req.action
+                )),
+            },
+        )
+        .await;
+    }
+
+    let name = req.name.unwrap_or_else(|| "inferenced-shm".into());
+    let size = req.size_bytes.unwrap_or(4 * 1024 * 1024);
+
+    if size > MAX_MEMFD_BYTES {
+        return write_response(
+            &mut stream,
+            &FdResponse {
+                status: "error".into(),
+                message: Some(format!(
+                    "Requested size {} exceeds limit of {} bytes",
+                    size, MAX_MEMFD_BYTES
+                )),
+            },
+        )
+        .await;
+    }
+
+    let reserved = match quota.try_reserve(size) {
+        Ok(p) => p,
+        Err(current) => {
+            return write_response(
+                &mut stream,
+                &FdResponse {
+                    status: "error".into(),
+                    message: Some(format!(
+                        "Quota exceeded: {} bytes already allocated, request {} bytes",
+                        current, size
+                    )),
+                },
+            )
+            .await;
+        }
+    };
+
+    let memfd = match create_sealed_memfd(&name, size, None) {
+        Ok(m) => m,
+        Err(e) => {
+            quota.release(reserved);
+            return write_response(
+                &mut stream,
+                &FdResponse {
+                    status: "error".into(),
+                    message: Some(format!("Failed to create sealed memfd: {}", e)),
+                },
+            )
+            .await;
+        }
+    };
+
+    let resp = FdResponse {
+        status: "ok".into(),
+        message: Some(format!(
+            "Created sealed memfd '{}' ({} bytes)",
+            name, size
+        )),
+    };
+    let payload = serde_json::to_vec(&resp).unwrap_or_default();
+
+    let _ = stream.writable().await;
+    match send_fd_over_unix(&stream, &memfd, &payload) {
+        Ok(_) => {
+            info!(
+                "Transferred sealed memfd '{}' ({} bytes) to client",
+                name, size
+            );
+            // On success the memfd is owned by the kernel cmsg buffer;
+            // the recipient inherits the FD and our handle is consumed.
+            // Do NOT release the quota.
+        }
+        Err(e) => {
+            error!(
+                "SCM_RIGHTS send failed for memfd '{}' ({} bytes): {}",
+                name, size, e
+            );
+            drop(memfd);
+            quota.release(reserved);
+        }
+    }
+    Ok(())
+}
+
+/// Read a single NUL-framed JSON request from `stream` into `scratch`.
+async fn read_framed_request(
+    stream: &mut tokio::net::UnixStream,
+    scratch: &mut Vec<u8>,
+) -> anyhow::Result<Option<FdRequest>> {
+    let mut chunk = [0u8; 4096];
+    loop {
+        let n = stream.read(&mut chunk).await?;
+        if n == 0 {
+            return Ok(None);
+        }
+        scratch.extend_from_slice(&chunk[..n]);
+        if let Some(nul_pos) = scratch.iter().position(|&b| b == 0x00) {
+            let payload: Vec<u8> = scratch.drain(..=nul_pos).collect();
+            let payload = &payload[..payload.len() - 1];
+            let req: FdRequest = serde_json::from_slice(payload)?;
+            return Ok(Some(req));
+        }
+        if scratch.len() > 64 * 1024 {
+            return Err(anyhow::anyhow!(
+                "FD request exceeded 64 KiB without NUL terminator"
+            ));
+        }
+    }
+}
+
+async fn write_response(
+    stream: &mut tokio::net::UnixStream,
+    resp: &FdResponse,
+) -> anyhow::Result<()> {
+    let bytes = serde_json::to_vec(resp)?;
+    let mut framed = bytes;
+    framed.push(0x00);
+    stream.write_all(&framed).await?;
+    stream.flush().await?;
+    Ok(())
 }
 
 pub fn bind_or_create_fd_listener(path_str: &str) -> anyhow::Result<UnixListener> {
@@ -112,48 +200,4 @@ pub fn bind_or_create_fd_listener(path_str: &str) -> anyhow::Result<UnixListener
     let listener = UnixListener::bind(path)?;
     info!("Bound SCM_RIGHTS FD server on {}", path_str);
     Ok(listener)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use inferenced_core::fd_lease::recv_fd_from_unix;
-    use tempfile::tempdir;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::UnixStream;
-
-    #[tokio::test]
-    async fn test_fd_server_create_and_unknown_action() {
-        let dir = tempdir().unwrap();
-        let sock_path = dir.path().join("fd_test.sock");
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let _ = run_fd_server(listener).await;
-        });
-
-        // 1. Unknown action receives error response
-        let mut client1 = UnixStream::connect(&sock_path).await.unwrap();
-        let bad_req = serde_json::json!({ "action": "invalid_cmd" });
-        client1.write_all(&serde_json::to_vec(&bad_req).unwrap()).await.unwrap();
-
-        let mut resp_buf = vec![0u8; 512];
-        let n = client1.read(&mut resp_buf).await.unwrap();
-        assert!(n > 0);
-        let resp: FdResponse = serde_json::from_slice(&resp_buf[..n]).unwrap();
-        assert_eq!(resp.status, "error");
-        assert!(resp.message.unwrap().contains("Unknown action"));
-
-        // 2. Create action passes sealed memfd over SCM_RIGHTS
-        let mut client2 = UnixStream::connect(&sock_path).await.unwrap();
-        let create_req = serde_json::json!({ "action": "create", "name": "test_tensor", "size_bytes": 4096 });
-        client2.write_all(&serde_json::to_vec(&create_req).unwrap()).await.unwrap();
-        client2.flush().await.unwrap();
-
-        client2.readable().await.unwrap();
-        let mut buf = [0u8; 512];
-        let (bytes, fd_opt) = recv_fd_from_unix(&client2, &mut buf).unwrap();
-        assert!(bytes > 0);
-        assert!(fd_opt.is_some(), "Client must receive sealed memfd via SCM_RIGHTS");
-    }
 }

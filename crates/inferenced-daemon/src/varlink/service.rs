@@ -123,7 +123,7 @@ pub fn handle_get_info() -> VarlinkReply {
     VarlinkReply::ok(json!({
         "vendor": "Syntropd Project",
         "product": "inferenced",
-        "version": "0.1.0",
+        "version": env!("CARGO_PKG_VERSION"),
         "url": "https://github.com/syntropd/inferenced",
         "interfaces": [
             "org.varlink.service",

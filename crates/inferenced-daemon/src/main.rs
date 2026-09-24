@@ -1,11 +1,15 @@
 mod activation;
 mod creds;
+mod fd_quota;
 mod fd_server;
 mod gateway;
 mod inhibit;
 mod notify;
 mod sentry;
 mod varlink;
+
+#[cfg(test)]
+mod fd_server_tests;
 
 use activation::{check_and_adopt_sockets, GatewayListener};
 use clap::Parser;
