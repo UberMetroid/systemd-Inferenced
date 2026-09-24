@@ -8,8 +8,14 @@ use rustix::net::{
 };
 use std::io::{IoSlice, IoSliceMut};
 
-/// Creates an in-memory anonymous file descriptor sealed against modification.
-/// Suitable for zero-copy weight sharing via SCM_RIGHTS.
+/// Creates an in-memory anonymous file descriptor sealed against
+/// modification, suitable for zero-copy weight sharing via SCM_RIGHTS.
+///
+/// The full seal set `WRITE | SHRINK | GROW | SEAL` is applied in every
+/// case. The previous version omitted `WRITE` when `initial_data` was
+/// `None`, which gave an empty buffer asymmetric immutability versus a
+/// populated buffer; callers can no longer rely on the seal contract
+/// being uniform.
 pub fn create_sealed_memfd(
     name: &str,
     size_bytes: u64,
@@ -31,16 +37,11 @@ pub fn create_sealed_memfd(
         }
     }
 
-    // Rewind file offset to start so readers sharing file description do not encounter EOF
+    // Rewind file offset to start so readers sharing file description
+    // do not encounter EOF.
     seek(&fd, SeekFrom::Start(0)).map_err(Error::SystemCall)?;
 
-    // Seal the memfd so consumers cannot resize the buffer
-    // Only seal WRITE if data was actually written, allowing empty shared buffers to be populated
-    let seals = if initial_data.is_some() {
-        SealFlags::SEAL | SealFlags::GROW | SealFlags::SHRINK | SealFlags::WRITE
-    } else {
-        SealFlags::SEAL | SealFlags::GROW | SealFlags::SHRINK
-    };
+    let seals = SealFlags::SEAL | SealFlags::GROW | SealFlags::SHRINK | SealFlags::WRITE;
     fcntl_add_seals(&fd, seals).map_err(Error::SystemCall)?;
 
     Ok(fd)
@@ -72,7 +73,15 @@ pub fn send_fd_over_unix<S: AsFd, F: AsFd>(
     Ok(sent)
 }
 
-/// Receive a file descriptor and payload bytes from a Unix stream socket using SCM_RIGHTS.
+/// Receive a file descriptor and payload bytes from a Unix stream
+/// socket using SCM_RIGHTS.
+///
+/// Returns `Err(Error::Fd(...))` when the payload is exactly
+/// `buf.len()` — the signal that `recvmsg` truncated the JSON header
+/// and the FD attached to it is unreliable. Callers who want to
+/// tolerate this should grow `buf` and retry, but the default is to
+/// surface the truncation so the consumer never silently gets a
+/// sealed FD paired with a malformed metadata blob.
 pub fn recv_fd_from_unix<S: AsFd>(
     socket: S,
     buf: &mut [u8],
@@ -88,6 +97,26 @@ pub fn recv_fd_from_unix<S: AsFd>(
         RecvFlags::CMSG_CLOEXEC,
     )
     .map_err(Error::SystemCall)?;
+
+    if msg.bytes == buf.len() {
+        // recvmsg would have written more if it had room; treat the
+        // payload as truncated and drop the FD rather than handing a
+        // sealed descriptor to the caller with broken metadata.
+        let mut received_fd = None;
+        for cmsg in ancillary_buf.drain() {
+            if let RecvAncillaryMessage::ScmRights(fds) = cmsg {
+                for owned in fds {
+                    if received_fd.is_none() {
+                        received_fd = Some(owned);
+                    }
+                }
+            }
+        }
+        return Err(Error::Fd(format!(
+            "recvmsg filled {} bytes; caller-supplied buffer too small",
+            buf.len()
+        )));
+    }
 
     let mut received_fd = None;
     for cmsg in ancillary_buf.drain() {

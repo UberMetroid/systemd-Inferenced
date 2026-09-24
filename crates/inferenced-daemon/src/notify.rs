@@ -7,6 +7,34 @@ use std::io;
 use std::path::Path;
 use tracing::{info, warn};
 
+/// Maximum notify datagram size (systemd protocol cap).
+const NOTIFY_MAX: usize = 8 * 1024 * 1024;
+
+/// Build a `SocketAddrUnix` for the notify socket, supporting both
+/// filesystem paths (`/run/systemd/notify`) and abstract namespaces
+/// (`@notify`). Abstract names containing interior NULs are rejected
+/// because the kernel would route to an address nobody listens on,
+/// silently dropping the notification.
+fn notify_address(socket_path: &str) -> Option<SocketAddrUnix> {
+    if let Some(name) = socket_path.strip_prefix('@') {
+        if name.is_empty() || name.as_bytes().contains(&0) {
+            return None;
+        }
+        SocketAddrUnix::new_abstract_name(name.as_bytes()).ok()
+    } else if socket_path.is_empty() {
+        None
+    } else {
+        SocketAddrUnix::new(Path::new(socket_path)).ok()
+    }
+}
+
+/// Strip embedded newlines so an attacker-supplied or caller-supplied
+/// string cannot terminate the current sd_notify variable early and
+/// inject a fake following variable (e.g. `MAINPID=`, `STOPPING=1`).
+fn sanitize_value(s: &str) -> String {
+    s.chars().filter(|&c| c != '\n' && c != '\r').collect()
+}
+
 /// Notify systemd that initialization has completed and service is ready
 pub fn notify_systemd_ready() {
     if let Err(e) = send_notification("READY=1\nSTATUS=Hardware planes active\n") {
@@ -16,10 +44,13 @@ pub fn notify_systemd_ready() {
     }
 }
 
-/// Update systemd service status text shown in systemctl status
+/// Update systemd service status text shown in systemctl status.
+/// Embedded newlines in `status` are stripped to prevent early
+/// termination of the STATUS variable and injection of fake keys.
 #[allow(dead_code)]
 pub fn notify_systemd_status(status: &str) {
-    let msg = format!("STATUS={}\n", status);
+    let sanitized = sanitize_value(status);
+    let msg = format!("STATUS={}\n", sanitized);
     if let Err(e) = send_notification(&msg) {
         warn!("Failed to send SD_NOTIFY status: {}", e);
     }
@@ -29,7 +60,7 @@ pub fn notify_systemd_status(status: &str) {
 #[allow(dead_code)]
 pub fn notify_systemd_watchdog() {
     if let Err(e) = send_notification("WATCHDOG=1\n") {
-        warn!("Failed to send SD_NOTIFY WATCHDOG=1: {}", e);
+        warn!("Failed to send SD_NOTIFY WATCHDOG: {}", e);
     }
 }
 
@@ -42,8 +73,15 @@ pub fn notify_systemd_stopping() {
     }
 }
 
-/// Send a notification string to the socket defined in $NOTIFY_SOCKET
+/// Send a notification string to the socket defined in $NOTIFY_SOCKET.
+/// Rejects payloads above the systemd 8 MiB cap with `InvalidInput`.
 pub fn send_notification(state: &str) -> io::Result<usize> {
+    if state.len() > NOTIFY_MAX {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "notification exceeds 8 MiB systemd cap",
+        ));
+    }
     let socket_path = match env::var("NOTIFY_SOCKET") {
         Ok(path) if !path.is_empty() => path,
         _ => return Ok(0),
@@ -53,13 +91,12 @@ pub fn send_notification(state: &str) -> io::Result<usize> {
 
 /// Send notification payload directly to specified socket (abstract or filesystem)
 pub fn send_notification_to(socket_path: &str, state: &str) -> io::Result<usize> {
-    let addr = if let Some(stripped) = socket_path.strip_prefix('@') {
-        SocketAddrUnix::new_abstract_name(stripped.as_bytes())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?
-    } else {
-        SocketAddrUnix::new(Path::new(socket_path))
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?
-    };
+    let addr = notify_address(socket_path).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid NOTIFY_SOCKET target '{}'", socket_path),
+        )
+    })?;
 
     let sock = socket(AddressFamily::UNIX, SocketType::DGRAM, None)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
@@ -126,5 +163,37 @@ mod tests {
         env::remove_var("NOTIFY_SOCKET");
         let res = send_notification("READY=1\n");
         assert_eq!(res.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_notify_status_strips_embedded_newlines() {
+        // An attacker-supplied or caller-supplied status string with an
+        // embedded newline must not be able to terminate the STATUS
+        // variable early and inject a fake following variable.
+        let sanitized = super::sanitize_value("evil\nMAINPID=42\n");
+        assert_eq!(sanitized, "evilMAINPID=42");
+        assert!(!sanitized.contains('\n'));
+        assert!(!sanitized.contains('\r'));
+    }
+
+    #[test]
+    fn test_notify_oversize_payload_rejected() {
+        let huge = "X".repeat(super::NOTIFY_MAX + 1);
+        let res = send_notification(&huge);
+        assert!(res.is_err(), "oversize payload must be rejected");
+    }
+
+    #[test]
+    fn test_notify_rejects_interior_nul_in_abstract_name() {
+        // Abstract names containing interior NULs would silently route
+        // to an address nobody listens on.
+        let res = send_notification_to("@notify\0anything", "READY=1\n");
+        assert!(res.is_err(), "interior-NUL abstract name must be rejected");
+    }
+
+    #[test]
+    fn test_notify_rejects_empty_abstract_name() {
+        let res = send_notification_to("@", "READY=1\n");
+        assert!(res.is_err(), "empty abstract name must be rejected");
     }
 }
