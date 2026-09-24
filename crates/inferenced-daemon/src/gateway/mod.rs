@@ -1,6 +1,9 @@
 pub mod handlers;
 pub mod types;
 
+#[cfg(test)]
+mod tests;
+
 pub use handlers::AppState;
 
 use crate::activation::GatewayListener;

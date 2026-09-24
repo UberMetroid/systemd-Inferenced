@@ -86,7 +86,13 @@ mkdir -p "${UNIT_DIR}" "${CONF_DIR}"
 install -Dm644 systemd/systemd-inferenced.service "${UNIT_DIR}/systemd-inferenced.service"
 install -Dm644 systemd/systemd-inferenced.socket "${UNIT_DIR}/systemd-inferenced.socket"
 install -Dm644 systemd/ai.slice "${UNIT_DIR}/ai.slice"
+install -Dm644 systemd/ai-batch.slice "${UNIT_DIR}/ai-batch.slice"
 install -Dm644 systemd/ai-sentry.slice "${UNIT_DIR}/ai-sentry.slice"
+
+if [[ "${MODE}" == "system" ]]; then
+    install -Dm644 systemd/sysusers.d/systemd-inferenced.conf "/usr/lib/sysusers.d/systemd-inferenced.conf" 2>/dev/null || true
+    install -Dm644 systemd/tmpfiles.d/systemd-inferenced.conf "/usr/lib/tmpfiles.d/systemd-inferenced.conf" 2>/dev/null || true
+fi
 
 if [[ ! -f "${CONF_DIR}/inferenced.conf" ]]; then
     install -Dm644 systemd/inferenced.conf "${CONF_DIR}/inferenced.conf"

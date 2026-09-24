@@ -47,3 +47,4 @@ ManagedOOMPreference=avoid
 
 [Install]
 WantedBy=multi-user.target
+Alias=inferenced.service

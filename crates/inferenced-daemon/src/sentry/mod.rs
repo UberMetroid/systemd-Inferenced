@@ -50,7 +50,7 @@ async fn handle_sentry_connection(
 ) -> anyhow::Result<()> {
     info!("Received emergency triage connection from systemd-sentry!");
 
-    let mut buf = [0u8; 4096];
+    let mut buf = vec![0u8; 65536];
     loop {
         let n = stream.read(&mut buf).await?;
         if n == 0 {
@@ -121,4 +121,63 @@ pub fn bind_or_create_sentry_listener(path: &Path) -> anyhow::Result<UnixListene
     let listener = UnixListener::bind(path)?;
     info!("Bound Sentry emergency triage listener on {:?}", path);
     Ok(listener)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use inferenced_core::topology::{ComputePlane, ComputePlaneKind, HardwareTopology};
+    use tempfile::tempdir;
+
+    fn make_test_topology() -> HardwareTopology {
+        let mut topo = HardwareTopology::default();
+        topo.planes.push(ComputePlane {
+            id: "npu-sentry-0".into(),
+            name: "Protected Sentry NPU Enclave".into(),
+            kind: ComputePlaneKind::NpuAccelerator,
+            device_path: None,
+            total_memory_bytes: 4 * 1024 * 1024 * 1024,
+            available_memory_bytes: 4 * 1024 * 1024 * 1024,
+            numa_node: None,
+            supported_formats: vec![],
+            is_triage_reserved: true,
+            hardware_features: vec![],
+        });
+        topo
+    }
+
+    #[tokio::test]
+    async fn test_sentry_enclave_triage_ping_roundtrip() {
+        let dir = tempdir().unwrap();
+        let sock_path = dir.path().join("sentry_roundtrip.sock");
+        let listener = bind_or_create_sentry_listener(&sock_path).unwrap();
+        let arbiter = Arc::new(Arbiter::new(make_test_topology()));
+
+        let server_arbiter = arbiter.clone();
+        tokio::spawn(async move {
+            let _ = run_sentry_triage_listener(listener, server_arbiter).await;
+        });
+
+        let mut client = UnixStream::connect(&sock_path).await.unwrap();
+        let ping_req = serde_json::json!({
+            "action": "triage_ping",
+            "incident_id": "panic-gpu-hang-007",
+            "unit_name": "systemd-sentry.service"
+        });
+        client
+            .write_all(&serde_json::to_vec(&ping_req).unwrap())
+            .await
+            .unwrap();
+
+        let mut resp_buf = vec![0u8; 1024];
+        let n = client.read(&mut resp_buf).await.unwrap();
+        assert!(n > 0);
+
+        let resp: SentryTriageResponse = serde_json::from_slice(&resp_buf[..n]).unwrap();
+        assert_eq!(resp.status, "accepted");
+        assert_eq!(resp.allocated_plane, "npu-sentry-0");
+        assert_eq!(resp.plane_assigned, "npu-sentry-0");
+        assert_eq!(resp.incident_id, Some("panic-gpu-hang-007".into()));
+        assert!(resp.preemption_triggered);
+    }
 }

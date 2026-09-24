@@ -169,26 +169,19 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_is_socket_activated_false_when_unset() {
+    fn test_is_socket_activated_lifecycle() {
         env::remove_var("LISTEN_PID");
         env::remove_var("LISTEN_FDS");
         assert!(!is_socket_activated());
-    }
 
-    #[test]
-    fn test_is_socket_activated_pid_mismatch() {
         env::set_var("LISTEN_PID", (std::process::id() + 9999).to_string());
         env::set_var("LISTEN_FDS", "3");
         assert!(!is_socket_activated());
-        env::remove_var("LISTEN_PID");
-        env::remove_var("LISTEN_FDS");
-    }
 
-    #[test]
-    fn test_is_socket_activated_true() {
         env::set_var("LISTEN_PID", std::process::id().to_string());
         env::set_var("LISTEN_FDS", "3");
         assert!(is_socket_activated());
+
         env::remove_var("LISTEN_PID");
         env::remove_var("LISTEN_FDS");
     }

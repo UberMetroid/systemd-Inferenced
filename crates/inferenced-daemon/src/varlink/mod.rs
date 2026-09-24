@@ -4,6 +4,9 @@ pub mod models;
 pub mod protocol;
 pub mod service;
 
+#[cfg(test)]
+mod tests;
+
 use inferenced_core::arbiter::Arbiter;
 use inferenced_core::lease::LeaseId;
 use protocol::{make_method_not_found, parse_request};

@@ -83,9 +83,15 @@ for dir in "${UNIT_DIR}" ${ALT_UNIT_DIR}; do
         rm -f "${dir}/systemd-inferenced.service"
         rm -f "${dir}/systemd-inferenced.socket"
         rm -f "${dir}/ai.slice"
+        rm -f "${dir}/ai-batch.slice"
         rm -f "${dir}/ai-sentry.slice"
     fi
 done
+
+if [[ "${MODE}" == "system" ]]; then
+    rm -f /usr/lib/sysusers.d/systemd-inferenced.conf 2>/dev/null || true
+    rm -f /usr/lib/tmpfiles.d/systemd-inferenced.conf 2>/dev/null || true
+fi
 
 # 4. Remove installed binaries
 echo "==> Removing executable binaries..."
