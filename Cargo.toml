@@ -16,7 +16,7 @@ authors = ["systemd-inferenced contributors"]
 
 [workspace.dependencies]
 # Internal workspace crates
-inferenced-core = { package = "syntropd-inferenced-core", path = "crates/inferenced-core" }
+inferenced-core = { package = "syntrop-inferenced-core", version = "0.1.0", path = "crates/inferenced-core" }
 
 
 # Pure Rust async runtime & Linux system interfaces (zero libsystemd.so)

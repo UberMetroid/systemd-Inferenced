@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+repository = "https://github.com/syntropd/inferenced"
+description = "Heterogeneous GPU/NPU hardware arbiter and model lifecycle broker for syntropd"
 
 [[bin]]
 name = "inferenced"

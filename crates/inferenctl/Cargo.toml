@@ -1,5 +1,5 @@
 [package]
-name = "syntropd-inferenctl"
+name = "inferenctl"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
