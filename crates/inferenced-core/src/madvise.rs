@@ -53,3 +53,15 @@ pub fn advise_random(addr: *mut c_void, len: usize) -> Result<()> {
     }
     Ok(())
 }
+
+/// Advise the kernel to exclude the memory range from core dumps (MADV_DONTDUMP).
+/// Crucial for systemd-coredump: prevents multi-gigabyte zero-copy model weight
+/// buffers from exhausting disk space and stalling crash supervisor analysis.
+pub fn advise_dontdump(addr: *mut c_void, len: usize) -> Result<()> {
+    // Safety: Caller must provide valid memory pointer and length
+    unsafe {
+        madvise(addr, len, Advice::LinuxDontDump).map_err(Error::SystemCall)?;
+    }
+    Ok(())
+}
+

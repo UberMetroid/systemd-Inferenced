@@ -42,8 +42,21 @@ DeviceAllow=/dev/accel/* rw
 DeviceAllow=/dev/hailo* rw
 DeviceAllow=/dev/kfd rw
 
-# cgroup v2 & OOM Protection
+# cgroup v2 & systemd-oomd Protection
 ManagedOOMPreference=avoid
+
+# Logging & systemd-journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=systemd-inferenced
+
+# Crash Diagnostics & systemd-coredump
+LimitCORE=infinity
+Environment=RUST_BACKTRACE=1
+
+# Encrypted Secrets & systemd-creds
+# Decrypted secrets from LoadCredential/LoadCredentialEncrypted appear in $CREDENTIALS_DIRECTORY
+# Example: LoadCredentialEncrypted=api_token:/etc/systemd/inferenced.conf.d/api_token.cred
 
 [Install]
 WantedBy=multi-user.target

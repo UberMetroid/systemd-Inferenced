@@ -1,4 +1,5 @@
 mod activation;
+mod creds;
 mod fd_server;
 mod gateway;
 mod notify;

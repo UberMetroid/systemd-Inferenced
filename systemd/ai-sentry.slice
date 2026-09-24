@@ -8,6 +8,4 @@ Before=slices.target
 CPUWeight=1000
 IOWeight=1000
 MemoryMin=2G
-ManagedOOMPreference=avoid
-ManagedOOMMemoryPressure=kill
-ManagedOOMMemoryPressureLimit=95%
+ManagedOOMPreference=omit

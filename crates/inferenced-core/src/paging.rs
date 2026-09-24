@@ -123,6 +123,12 @@ impl MemfdPaging {
         advise_random(addr, len)
     }
 
+    /// Advise kernel to exclude pages from core dumps using `Advice::LinuxDontDump`.
+    /// Crucial for systemd-coredump: prevents multi-gigabyte models from thrashing storage on crash.
+    pub fn advise_exclude_coredump(addr: *mut c_void, len: usize) -> Result<()> {
+        crate::madvise::advise_dontdump(addr, len)
+    }
+
     /// Read live system zswap metrics.
     pub fn read_zswap_metrics() -> ZswapMetrics {
         ZswapMetrics::read_current()
