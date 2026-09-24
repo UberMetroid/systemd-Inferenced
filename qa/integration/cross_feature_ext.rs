@@ -107,27 +107,39 @@ async fn test_interaction_cli_exec_stream_filter_with_sentry_triage_interruption
 
 #[tokio::test]
 async fn test_interaction_hardware_plane_rediscovery_with_active_leases() {
-    let arbiter = Arbiter::new(make_ext_topo());
+    let mut initial_topo = make_ext_topo();
+    initial_topo.planes.push(ComputePlane {
+        id: "plane-hotplug-npu".into(), name: "Hotplug NPU".into(), kind: ComputePlaneKind::NpuAccelerator,
+        device_path: None, total_memory_bytes: 2 * 1024 * 1024 * 1024, available_memory_bytes: 2 * 1024 * 1024 * 1024,
+        numa_node: None, supported_formats: vec![], is_triage_reserved: false, is_quarantined: false, hardware_features: vec![],
+    });
+    let arbiter = Arbiter::new(initial_topo);
 
-    let lease = arbiter
-        .acquire_lease(LeasePriority::Interactive, 1024 * 1024 * 1024, None, None, None)
+    let l1 = arbiter
+        .acquire_lease(LeasePriority::Interactive, 1024 * 1024 * 1024, Some("plane-ext-gpu".into()), None, None)
         .await
         .unwrap();
 
-    // Verify topology retains lease state
-    let topo = arbiter.get_topology().await;
-    assert_eq!(
-        topo.planes[0].available_memory_bytes,
-        7 * 1024 * 1024 * 1024
-    );
+    let l2 = arbiter
+        .acquire_lease(LeasePriority::Interactive, 1024 * 1024 * 1024, Some("plane-hotplug-npu".into()), None, None)
+        .await
+        .unwrap();
 
-    // Release lease
-    arbiter.release_lease(lease.id).await.unwrap();
+    // Rediscover topology where plane-hotplug-npu is unplugged/removed
+    arbiter.update_topology(make_ext_topo()).await;
+
+    // Verify plane-ext-gpu retained lease memory reservation (8GB - 1GB = 7GB)
+    let topo = arbiter.get_topology().await;
+    assert_eq!(topo.planes.len(), 1);
+    assert_eq!(topo.planes[0].available_memory_bytes, 7 * 1024 * 1024 * 1024);
+
+    // Verify lease on hot-unplugged plane is transitioned to Revoked
+    assert_eq!(arbiter.get_lease(l2.id).await.unwrap().state, inferenced_core::lease::LeaseState::Revoked);
+
+    // Release l1 lease -> plane-ext-gpu restores to 8GB cleanly
+    arbiter.release_lease(l1.id).await.unwrap();
     let restored = arbiter.get_topology().await;
-    assert_eq!(
-        restored.planes[0].available_memory_bytes,
-        8 * 1024 * 1024 * 1024
-    );
+    assert_eq!(restored.planes[0].available_memory_bytes, 8 * 1024 * 1024 * 1024);
 }
 
 #[test]

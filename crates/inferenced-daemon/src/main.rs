@@ -17,7 +17,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
 #[command(name = "systemd-inferenced")]
@@ -64,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
 
     let arbiter = Arc::new(Arbiter::new(topo));
     let preempt = Arc::new(PreemptCoordinator::new(arbiter.clone()));
+    let inhibitor = Arc::new(inhibit::InhibitorManager::new());
 
     // Wire zero-copy paging manager
     let _ = MemfdPaging;
@@ -146,10 +147,17 @@ async fn main() -> anyhow::Result<()> {
                     if let Ok((n, _)) = socket.recv_from(&mut buf).await {
                         if let Some(uevent) = inferenced_core::Uevent::parse(&buf[..n]) {
                             if uevent.is_compute_device() {
-                                info!(
-                                    "Kernel compute uevent (action={}, subsystem={}), refreshing topology",
-                                    uevent.action, uevent.subsystem
-                                );
+                                if uevent.is_reset_event() {
+                                    warn!(
+                                        "Kernel compute ASIC reset (action={}, devpath={}), refreshing topology",
+                                        uevent.action, uevent.devpath
+                                    );
+                                } else {
+                                    info!(
+                                        "Kernel compute uevent (action={}, subsystem={}), refreshing topology",
+                                        uevent.action, uevent.subsystem
+                                    );
+                                }
                                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                                 let _ = arbiter_hotplug.refresh_topology().await;
                             }
@@ -162,34 +170,74 @@ async fn main() -> anyhow::Result<()> {
 
     // 6. Systemd Watchdog keepalive loop (pings every 10s for WatchdogSec=30s if arbiter is responsive)
     let arbiter_clone = arbiter.clone();
+    let inhibitor_watchdog = inhibitor.clone();
     let watchdog_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
         loop {
             interval.tick().await;
             if arbiter_clone.health_check().await {
                 notify::notify_systemd_watchdog();
+                if inhibitor_watchdog.is_inhibited() {
+                    notify::notify_systemd_status(&format!(
+                        "Active AI leases executing ({}, sleep/idle inhibited)",
+                        inhibitor_watchdog.active_lease_count()
+                    ));
+                }
             }
         }
     });
 
-    serve_gateway(gateway_listener, app, shutdown_signal()).await?;
+    // 7. Systemd-logind sleep/idle inhibitor background monitor
+    let arbiter_inhibit = arbiter.clone();
+    let inhibitor_monitor = inhibitor.clone();
+    let _inhibit_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
+        let mut prev_count = 0;
+        loop {
+            interval.tick().await;
+            let count = arbiter_inhibit.list_leases().await.into_iter().filter(|l| l.is_active()).count();
+            if count > prev_count {
+                for _ in 0..(count - prev_count) { inhibitor_monitor.on_lease_acquired().await; }
+            } else if count < prev_count {
+                for _ in 0..(prev_count - count) { inhibitor_monitor.on_lease_released().await; }
+            }
+            prev_count = count;
+        }
+    });
+
+    serve_gateway(gateway_listener, app, shutdown_signal(inhibitor.clone(), arbiter.clone())).await?;
 
     watchdog_task.abort();
+    inhibitor.quiesce_for_sleep(&arbiter).await;
     notify::notify_systemd_stopping();
     info!("systemd-inferenced daemon terminated cleanly.");
     Ok(())
 }
 
-async fn shutdown_signal() {
+async fn shutdown_signal(inhibitor: Arc<inhibit::InhibitorManager>, arbiter: Arc<Arbiter>) {
     let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         .expect("failed to install SIGTERM handler");
+    let mut sigcont = tokio::signal::unix::signal(
+        tokio::signal::unix::SignalKind::from_raw(rustix::process::Signal::Cont as i32),
+    )
+    .expect("failed to install SIGCONT handler");
 
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            info!("Termination signal SIGINT received, shutting down gracefully...");
-        }
-        _ = sigterm.recv() => {
-            info!("Termination signal SIGTERM from systemd received, shutting down gracefully...");
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                info!("Termination signal SIGINT received, shutting down gracefully...");
+                inhibitor.quiesce_for_sleep(&arbiter).await;
+                break;
+            }
+            _ = sigterm.recv() => {
+                info!("Termination signal SIGTERM from systemd received, shutting down gracefully...");
+                inhibitor.quiesce_for_sleep(&arbiter).await;
+                break;
+            }
+            _ = sigcont.recv() => {
+                info!("SIGCONT received from systemd-logind/kernel; resuming model paging...");
+                inhibitor.resume_from_sleep(&arbiter).await;
+            }
         }
     }
 }

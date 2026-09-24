@@ -18,9 +18,10 @@ pub fn run_exec(
     if let Some(arg) = prompt_arg {
         prompt = arg;
     } else {
-        let mut stdin = io::stdin();
+        let stdin = io::stdin();
         if !stdin.is_terminal() {
-            let _ = stdin.read_to_string(&mut prompt);
+            let mut handle = stdin.lock().take(4 * 1024 * 1024);
+            let _ = handle.read_to_string(&mut prompt);
         }
     }
 

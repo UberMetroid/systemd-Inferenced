@@ -109,7 +109,7 @@ pub fn open_uevent_socket() -> Result<OwnedFd> {
         );
 
         if res < 0 {
-            let _ = libc_syscall_close(fd_raw);
+            let _ = rustix::io::close(fd_raw);
             return Err(Error::Systemd("Failed to bind netlink socket to group 1".into()));
         }
 
@@ -118,11 +118,13 @@ pub fn open_uevent_socket() -> Result<OwnedFd> {
 }
 
 /// Direct Linux syscall wrappers (pure Rust, zero C runtime dependencies).
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 unsafe fn libc_syscall_socket(domain: c_int, type_: c_int, protocol: c_int) -> c_int {
+    let ret: isize;
     std::arch::asm!(
         "syscall",
-        inlateout("rax") 41isize => _, // SYS_socket = 41 on x86_64
+        inlateout("rax") 41isize => ret,
         in("rdi") domain,
         in("rsi") type_,
         in("rdx") protocol,
@@ -130,16 +132,16 @@ unsafe fn libc_syscall_socket(domain: c_int, type_: c_int, protocol: c_int) -> c
         lateout("r11") _,
         options(nostack)
     );
-    let ret: c_int;
-    std::arch::asm!("mov {:e}, eax", out(reg) ret);
-    ret
+    ret as c_int
 }
 
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 unsafe fn libc_syscall_bind(sockfd: c_int, addr: *const std::ffi::c_void, addrlen: u32) -> c_int {
+    let ret: isize;
     std::arch::asm!(
         "syscall",
-        inlateout("rax") 49isize => _, // SYS_bind = 49 on x86_64
+        inlateout("rax") 49isize => ret,
         in("rdi") sockfd,
         in("rsi") addr,
         in("rdx") addrlen,
@@ -147,24 +149,37 @@ unsafe fn libc_syscall_bind(sockfd: c_int, addr: *const std::ffi::c_void, addrle
         lateout("r11") _,
         options(nostack)
     );
-    let ret: c_int;
-    std::arch::asm!("mov {:e}, eax", out(reg) ret);
-    ret
+    ret as c_int
 }
 
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
-unsafe fn libc_syscall_close(fd: c_int) -> c_int {
+unsafe fn libc_syscall_socket(domain: c_int, type_: c_int, protocol: c_int) -> c_int {
+    let ret: isize;
     std::arch::asm!(
-        "syscall",
-        inlateout("rax") 3isize => _, // SYS_close = 3 on x86_64
-        in("rdi") fd,
-        lateout("rcx") _,
-        lateout("r11") _,
+        "svc #0",
+        inlateout("x8") 198isize => _,
+        inlateout("x0") domain as isize => ret,
+        in("x1") type_ as isize,
+        in("x2") protocol as isize,
         options(nostack)
     );
-    let ret: c_int;
-    std::arch::asm!("mov {:e}, eax", out(reg) ret);
-    ret
+    ret as c_int
+}
+
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn libc_syscall_bind(sockfd: c_int, addr: *const std::ffi::c_void, addrlen: u32) -> c_int {
+    let ret: isize;
+    std::arch::asm!(
+        "svc #0",
+        inlateout("x8") 200isize => _,
+        inlateout("x0") sockfd as isize => ret,
+        in("x1") addr as usize,
+        in("x2") addrlen as usize,
+        options(nostack)
+    );
+    ret as c_int
 }
 
 #[cfg(test)]

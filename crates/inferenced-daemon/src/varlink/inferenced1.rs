@@ -146,5 +146,6 @@ async fn handle_stream_inference(
         let continues = i < tokens.len() - 1;
         let reply = VarlinkReply::streaming(json!({ "chunk": token }), continues);
         let _ = w.write_all(&reply.to_bytes()).await;
+        let _ = w.flush().await;
     }
 }

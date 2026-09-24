@@ -189,3 +189,58 @@ async fn test_interaction_multitenant_arbitration_with_cooperative_yield_fallbac
     let current_topo = arbiter.get_topology().await;
     assert!(current_topo.planes[0].available_memory_bytes >= 2 * 1024 * 1024 * 1024);
 }
+
+#[tokio::test]
+async fn test_interaction_uma_preempt_thaw_and_release_lifecycle() {
+    let mut topo = HardwareTopology::default();
+    let total_bytes = 8 * 1024 * 1024 * 1024;
+    let make_p = |id: &str, kind| ComputePlane {
+        id: id.into(), name: id.into(), kind, device_path: None, total_memory_bytes: total_bytes,
+        available_memory_bytes: total_bytes, numa_node: None, supported_formats: vec![],
+        is_triage_reserved: false, is_quarantined: false, hardware_features: vec![],
+    };
+    topo.planes.push(make_p("plane-uma-gpu", ComputePlaneKind::IntegratedUma));
+    topo.planes.push(make_p("cpu-host", ComputePlaneKind::CpuMatrixExtension));
+    let arbiter = Arbiter::new(topo);
+
+    // 1. Acquire 4GB Batch lease on UMA (deducts from both UMA and CPU)
+    let batch = arbiter
+        .acquire_lease(LeasePriority::Batch, 4 * 1024 * 1024 * 1024, Some("plane-uma-gpu".into()), None, None)
+        .await
+        .unwrap();
+    let t1 = arbiter.get_topology().await;
+    assert_eq!(t1.planes[0].available_memory_bytes, 4 * 1024 * 1024 * 1024);
+    assert_eq!(t1.planes[1].available_memory_bytes, 4 * 1024 * 1024 * 1024);
+
+    // 2. High priority Interactive lease arrives requiring 6GB on UMA -> preempts 4GB batch
+    let interactive = arbiter
+        .acquire_lease(LeasePriority::Interactive, 6 * 1024 * 1024 * 1024, Some("plane-uma-gpu".into()), None, None)
+        .await
+        .unwrap();
+    assert_eq!(arbiter.get_lease(batch.id).await.unwrap().state, LeaseState::Preempted);
+    let t2 = arbiter.get_topology().await;
+    assert_eq!(t2.planes[0].available_memory_bytes, 2 * 1024 * 1024 * 1024);
+    assert_eq!(t2.planes[1].available_memory_bytes, 2 * 1024 * 1024 * 1024);
+
+    // 3. Attempt to thaw batch lease while memory insufficient fails
+    assert!(arbiter.thaw_lease(batch.id).await.is_err());
+
+    // 4. Release interactive lease -> restores memory to both planes
+    arbiter.release_lease(interactive.id).await.unwrap();
+    let t3 = arbiter.get_topology().await;
+    assert_eq!(t3.planes[0].available_memory_bytes, total_bytes);
+    assert_eq!(t3.planes[1].available_memory_bytes, total_bytes);
+
+    // 5. Thaw batch lease -> succeeds, deducts 4GB from BOTH UMA and CPU planes
+    arbiter.thaw_lease(batch.id).await.unwrap();
+    assert_eq!(arbiter.get_lease(batch.id).await.unwrap().state, LeaseState::Active);
+    let t4 = arbiter.get_topology().await;
+    assert_eq!(t4.planes[0].available_memory_bytes, 4 * 1024 * 1024 * 1024);
+    assert_eq!(t4.planes[1].available_memory_bytes, 4 * 1024 * 1024 * 1024);
+
+    // 6. Release batch lease -> restores both planes cleanly
+    arbiter.release_lease(batch.id).await.unwrap();
+    let t_final = arbiter.get_topology().await;
+    assert_eq!(t_final.planes[0].available_memory_bytes, total_bytes);
+    assert_eq!(t_final.planes[1].available_memory_bytes, total_bytes);
+}

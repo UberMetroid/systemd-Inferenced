@@ -83,6 +83,9 @@ impl PreemptCoordinator {
 
         {
             let mut recs = self.records.lock().await;
+            if recs.len() > 128 {
+                recs.retain(|_, r| !r.completed);
+            }
             recs.insert(
                 lease_id,
                 PreemptRecord {

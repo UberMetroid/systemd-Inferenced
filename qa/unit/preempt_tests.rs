@@ -188,3 +188,33 @@ async fn test_preempt_revoke_preempted_lease_no_double_reclaim() {
     let topo_final = arbiter.get_topology().await;
     assert_eq!(topo_final.planes[0].available_memory_bytes, total_bytes);
 }
+
+#[tokio::test]
+async fn test_preempt_release_preempted_lease_expires_without_double_reclaim() {
+    let total_bytes = 4 * 1024 * 1024 * 1024;
+    let arbiter = make_test_arbiter(total_bytes);
+
+    let batch = arbiter
+        .acquire_lease(LeasePriority::Batch, total_bytes, None, None, None)
+        .await
+        .unwrap();
+
+    let interactive = arbiter
+        .acquire_lease(LeasePriority::Interactive, total_bytes, None, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(arbiter.get_lease(batch.id).await.unwrap().state, LeaseState::Preempted);
+
+    // Releasing preempted lease must transition to Expired without double-reclaim
+    arbiter.release_lease(batch.id).await.unwrap();
+    let lease_after = arbiter.get_lease(batch.id).await.unwrap();
+    assert_eq!(lease_after.state, LeaseState::Expired);
+    let topo_mid = arbiter.get_topology().await;
+    assert_eq!(topo_mid.planes[0].available_memory_bytes, 0);
+
+    // Releasing interactive lease restores plane memory exactly
+    arbiter.release_lease(interactive.id).await.unwrap();
+    let topo_final = arbiter.get_topology().await;
+    assert_eq!(topo_final.planes[0].available_memory_bytes, total_bytes);
+}

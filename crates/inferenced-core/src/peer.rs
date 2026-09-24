@@ -2,7 +2,6 @@ use crate::error::{Error, Result};
 use rustix::net::sockopt::get_socket_peercred;
 use std::fs;
 use std::os::unix::io::AsFd;
-use std::path::Path;
 
 /// Information extracted from socket peer credentials and Linux cgroup v2.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,7 +23,8 @@ impl PeerInfo {
             Error::Systemd(format!("Failed to retrieve SO_PEERCRED: {}", e))
         })?;
 
-        let pid = rustix::process::Pid::as_raw(Some(ucred.pid)) as u32;
+        let raw_pid = rustix::process::Pid::as_raw(Some(ucred.pid));
+        let pid = if raw_pid > 0 { raw_pid as u32 } else { 0 };
         let uid = ucred.uid.as_raw();
         let gid = ucred.gid.as_raw();
 
@@ -50,7 +50,10 @@ impl PeerInfo {
     /// Read cgroup path from `/proc/<pid>/cgroup` (bounded to 512 bytes).
     pub fn read_cgroup_path(pid: u32) -> Option<String> {
         let proc_path = format!("/proc/{}/cgroup", pid);
-        let content = fs::read_to_string(Path::new(&proc_path)).ok()?;
+        let mut file = fs::File::open(&proc_path).ok()?;
+        let mut buf = [0u8; 512];
+        let n = std::io::Read::read(&mut file, &mut buf).ok()?;
+        let content = std::str::from_utf8(&buf[..n]).ok()?;
         // cgroup v2 format: "0::<cgroup_path>"
         for line in content.lines() {
             if let Some(path) = line.strip_prefix("0::") {

@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
@@ -29,12 +29,14 @@ impl VarlinkClient {
         self.stream.flush()?;
 
         let mut buf = Vec::new();
-        self.reader.read_until(0, &mut buf)?;
+        (&mut self.reader).take(1024 * 1024).read_until(0, &mut buf)?;
         if buf.is_empty() {
             bail!("Connection closed by systemd-inferenced daemon");
         }
         if let Some(&0) = buf.last() {
             buf.pop();
+        } else {
+            bail!("Varlink framing error: message exceeds 1MB framing limit or missing NUL delimiter");
         }
 
         let resp: Value = serde_json::from_slice(&buf)?;
@@ -63,12 +65,14 @@ impl VarlinkClient {
         let mut buf = Vec::new();
         loop {
             buf.clear();
-            let n = self.reader.read_until(0, &mut buf)?;
+            let n = (&mut self.reader).take(1024 * 1024).read_until(0, &mut buf)?;
             if n == 0 {
                 break;
             }
             if let Some(&0) = buf.last() {
                 buf.pop();
+            } else {
+                bail!("Varlink stream framing error: message exceeds 1MB framing limit or missing NUL delimiter");
             }
             let resp: Value = serde_json::from_slice(&buf)?;
             if let Some(err) = resp.get("error").and_then(|v| v.as_str()) {
