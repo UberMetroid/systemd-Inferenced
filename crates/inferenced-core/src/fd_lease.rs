@@ -76,12 +76,16 @@ pub fn send_fd_over_unix<S: AsFd, F: AsFd>(
 /// Receive a file descriptor and payload bytes from a Unix stream
 /// socket using SCM_RIGHTS.
 ///
-/// Returns `Err(Error::Fd(...))` when the payload is exactly
-/// `buf.len()` — the signal that `recvmsg` truncated the JSON header
-/// and the FD attached to it is unreliable. Callers who want to
-/// tolerate this should grow `buf` and retry, but the default is to
-/// surface the truncation so the consumer never silently gets a
-/// sealed FD paired with a malformed metadata blob.
+/// Returns `Err(Error::Fd(...))` when the payload fills the
+/// caller-supplied buffer exactly, which is the only signal that
+/// `recvmsg` truncated the JSON header. The sealed FD that was
+/// attached to the truncated cmsg is dropped (closed) before the
+/// error is returned, so the kernel descriptor is not leaked. The
+/// truncation is fatal for this cmsg: callers must reconnect and
+/// re-request a fresh handoff; they must NOT call `recv_fd_from_unix`
+/// again on the same socket expecting a clean retry, because the
+/// producer may not retransmit and the FD's kernel reference has
+/// already been consumed.
 pub fn recv_fd_from_unix<S: AsFd>(
     socket: S,
     buf: &mut [u8],
@@ -100,9 +104,12 @@ pub fn recv_fd_from_unix<S: AsFd>(
 
     if msg.bytes == buf.len() {
         // recvmsg would have written more if it had room; treat the
-        // payload as truncated and drop the FD rather than handing a
-        // sealed descriptor to the caller with broken metadata.
-        let mut received_fd = None;
+        // payload as truncated. Drain the cmsg so the FD's kernel
+        // reference is closed explicitly — relying on `for owned in
+        // fds` to drop the iterator would leave the FD's drop order
+        // up to rustix's AncillaryIter::drop, which is correct but
+        // less obvious to readers.
+        let mut received_fd: Option<OwnedFd> = None;
         for cmsg in ancillary_buf.drain() {
             if let RecvAncillaryMessage::ScmRights(fds) = cmsg {
                 for owned in fds {
@@ -112,6 +119,7 @@ pub fn recv_fd_from_unix<S: AsFd>(
                 }
             }
         }
+        drop(received_fd);
         return Err(Error::Fd(format!(
             "recvmsg filled {} bytes; caller-supplied buffer too small",
             buf.len()

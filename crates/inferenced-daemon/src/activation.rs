@@ -132,17 +132,19 @@ pub fn check_and_adopt_sockets() -> Result<ActivatedSockets> {
                         info!("Adopted Gateway Unix socket on fd {}", fd_raw);
                         sockets.gateway = Some(GatewayListener::Unix(tokio_unix));
                     }
-                    // Positional fallback for unclassified sockets:
-                    // order matches `systemd-inferenced.socket` so FD 3 =
-                    // varlink, FD 4 = sentry, FD 5 = fd, FD 6 = gateway.
+                    // Positional fallback for unclassified sockets.
+                    // Order matches `systemd-inferenced.socket`: FD 3 =
+                    // varlink, FD 4 = sentry, FD 5 = gateway (TCP via the
+                    // V4 branch above; if a Unix gateway is used it lands
+                    // here), FD 6 = fd_server.
                     // Fails closed: leaves the slot empty and warns so
                     // the operator notices the misconfiguration.
                     _ => {
                         let slot = match i {
                             0 => "varlink",
                             1 => "sentry",
-                            2 => "fd",
-                            3 => "gateway",
+                            2 => "gateway",
+                            3 => "fd",
                             _ => "",
                         };
                         if path.is_some() {
@@ -160,13 +162,13 @@ pub fn check_and_adopt_sockets() -> Result<ActivatedSockets> {
                                 info!("Adopted Sentry socket by index 1 (fd {})", fd_raw);
                                 sockets.sentry = Some(tokio_unix);
                             }
-                            "fd" if sockets.fd_server.is_none() => {
-                                info!("Adopted FD server socket by index 2 (fd {})", fd_raw);
-                                sockets.fd_server = Some(tokio_unix);
-                            }
                             "gateway" if sockets.gateway.is_none() => {
-                                info!("Adopted Gateway Unix socket by index 3 (fd {})", fd_raw);
+                                info!("Adopted Gateway Unix socket by index 2 (fd {})", fd_raw);
                                 sockets.gateway = Some(GatewayListener::Unix(tokio_unix));
+                            }
+                            "fd" if sockets.fd_server.is_none() => {
+                                info!("Adopted FD server socket by index 3 (fd {})", fd_raw);
+                                sockets.fd_server = Some(tokio_unix);
                             }
                             _ => warn!("Unassigned Unix socket on fd {}", fd_raw),
                         }
