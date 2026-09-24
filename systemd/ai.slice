@@ -1,6 +1,6 @@
 [Unit]
 Description=AI Inference and Hardware Workloads Root Slice
-Documentation=https://github.com/UberMetroid/systemd-Inferenced
+Documentation=https://github.com/syntropd/inferenced
 Before=slices.target
 
 [Slice]

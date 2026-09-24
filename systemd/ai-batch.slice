@@ -1,6 +1,6 @@
 [Unit]
 Description=AI Batch Processing Low-Priority Workloads Slice
-Documentation=https://github.com/UberMetroid/systemd-Inferenced
+Documentation=https://github.com/syntropd/inferenced
 Before=slices.target
 
 [Slice]

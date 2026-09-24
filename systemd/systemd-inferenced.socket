@@ -1,6 +1,6 @@
 [Unit]
 Description=systemd-inferenced Activation Sockets
-Documentation=https://github.com/UberMetroid/systemd-Inferenced
+Documentation=https://github.com/syntropd/inferenced
 
 [Socket]
 # File Descriptor 3: Native Varlink IPC socket

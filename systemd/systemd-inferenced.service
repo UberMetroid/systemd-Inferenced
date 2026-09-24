@@ -1,6 +1,6 @@
 [Unit]
 Description=Heterogeneous AI Hardware Arbiter and Model Lifecycle Broker
-Documentation=https://github.com/UberMetroid/systemd-Inferenced
+Documentation=https://github.com/syntropd/inferenced
 After=network.target local-fs.target
 Requires=systemd-inferenced.socket
 

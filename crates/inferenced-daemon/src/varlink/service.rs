@@ -124,7 +124,7 @@ pub fn handle_get_info() -> VarlinkReply {
         "vendor": "systemd-inferenced",
         "product": "systemd-inferenced",
         "version": "0.1.0",
-        "url": "https://github.com/systemd/systemd-inferenced",
+        "url": "https://github.com/syntropd/inferenced",
         "interfaces": [
             "org.varlink.service",
             "io.systemd.inferenced1"

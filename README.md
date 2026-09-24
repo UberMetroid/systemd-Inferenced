@@ -6,9 +6,9 @@
 [![Platform: Linux / systemd](https://img.shields.io/badge/Platform-Linux%20%2F%20systemd-red.svg)](https://systemd.io/)
 [![Language: Rust](https://img.shields.io/badge/Language-Pure%20Rust-orange.svg)](https://www.rust-lang.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/Website-ubermetroid.github.io-blue.svg)](https://ubermetroid.github.io/systemd-Inferenced/)
+[![Website](https://img.shields.io/badge/Website-syntropd.github.io-blue.svg)](https://syntropd.github.io/inferenced/)
 
-> **Website & Documentation**: [https://ubermetroid.github.io/systemd-Inferenced/](https://ubermetroid.github.io/systemd-Inferenced/)
+> **Website & Documentation**: [https://syntropd.github.io/inferenced/](https://syntropd.github.io/inferenced/)
 
 ---
 

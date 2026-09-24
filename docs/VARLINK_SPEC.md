@@ -125,7 +125,7 @@ $ varlinkctl info unix:/run/systemd-inferenced/io.systemd.inferenced1
 Vendor: systemd-inferenced
 Product: systemd-inferenced
 Version: 0.1.0
-URL: https://github.com/UberMetroid/systemd-Inferenced
+URL: https://github.com/syntropd/inferenced
 Interfaces:
   org.varlink.service
   io.systemd.inferenced1
