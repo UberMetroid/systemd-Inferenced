@@ -104,3 +104,36 @@ async fn test_gateway_ollama_generate_streaming_and_non_streaming() {
     let last_chunk: serde_json::Value = serde_json::from_str(lines.last().unwrap()).unwrap();
     assert_eq!(last_chunk["done"], true);
 }
+
+#[tokio::test]
+async fn test_gateway_serve_unix_socket_roundtrip() {
+    let dir = tempfile::tempdir().unwrap();
+    let sock_path = dir.path().join("gateway_test.sock");
+    let listener = UnixListener::bind(&sock_path).unwrap();
+    let state = make_test_state();
+    let app = build_gateway_router(state);
+
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        serve_gateway(
+            GatewayListener::Unix(listener),
+            app,
+            async move { let _ = shutdown_rx.await; },
+        ).await
+    });
+
+    let mut client = tokio::net::UnixStream::connect(&sock_path).await.unwrap();
+    tokio::io::AsyncWriteExt::write_all(
+        &mut client,
+        b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    ).await.unwrap();
+
+    let mut response_bytes = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut response_bytes).await.unwrap();
+    let response_str = String::from_utf8_lossy(&response_bytes);
+    assert!(response_str.starts_with("HTTP/1.1 200 OK"));
+    assert!(response_str.contains("\"status\":\"ok\""));
+
+    let _ = shutdown_tx.send(());
+    let _ = server_task.await;
+}

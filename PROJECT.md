@@ -80,7 +80,7 @@ systemd-inferenced is a 100% pure Rust unprivileged heterogeneous hardware arbit
   - `org.varlink.service.GetInterfaceDescription(interface: string) -> (description: string)`
 - **Sentry Emergency Socket**: Over `/run/systemd-inferenced/sentry.sock` (FD 4):
   - Emergency protocol: JSON command `{"action":"triage_ping"}` / `{"action":"emergency_preempt"}` responding with status and resource allocation.
-- **Gateway / Stream Filter**: Over `/run/systemd-inferenced/io.sock` or `127.0.0.1:11434` (FD 5):
+- **Gateway / Stream Filter**: Over `/run/syntrop/gateway.sock` (FD 5):
   - Endpoint `/api/generate`: Streams JSON or raw tokens line-by-line for `inferenctl exec`.
 
 ## Code Layout

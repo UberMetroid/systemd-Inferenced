@@ -139,3 +139,31 @@ fn test_cli_check_config_syntax_error() {
         .unwrap();
     assert!(!out.status.success());
 }
+
+fn find_inferenced() -> PathBuf {
+    if let Ok(cargo_bin) = std::env::var("CARGO_BIN_EXE_inferenced") {
+        return PathBuf::from(cargo_bin);
+    }
+    let mut path = std::env::current_exe().unwrap_or_default();
+    while path.pop() {
+        if path.file_name().map(|n| n == "target").unwrap_or(false) {
+            let candidate = path.join("debug/inferenced");
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+    PathBuf::from("target/debug/inferenced")
+}
+
+#[test]
+fn test_inferenced_cli_help_options() {
+    let bin = find_inferenced();
+    let out = Command::new(&bin).arg("--help").output().expect("inferenced --help");
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("--gateway-socket"));
+    assert!(stdout.contains("/run/syntrop/gateway.sock"));
+    assert!(stdout.contains("--bind"));
+    assert!(!stdout.contains("11434"));
+}

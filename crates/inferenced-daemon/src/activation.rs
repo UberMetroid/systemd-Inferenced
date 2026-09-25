@@ -208,6 +208,8 @@ pub fn bind_standalone_unix(path: &Path) -> Result<UnixListener> {
         let _ = fs::remove_file(path);
     }
     let listener = UnixListener::bind(path)?;
+    #[cfg(unix)]
+    let _ = fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o660));
     info!("Bound standalone Unix socket on {:?}", path);
     Ok(listener)
 }
@@ -245,5 +247,7 @@ mod tests {
 
         let l2 = bind_standalone_unix(&sock);
         assert!(l2.is_ok());
+        #[cfg(unix)]
+        assert_eq!(std::os::unix::fs::PermissionsExt::mode(&fs::metadata(&sock).unwrap().permissions()) & 0o777, 0o660);
     }
 }
