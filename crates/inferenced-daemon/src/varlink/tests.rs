@@ -20,6 +20,9 @@ fn make_test_topo() -> HardwareTopology {
         is_quarantined: false,
         hardware_features: vec![],
     });
+    topo.total_system_ram_bytes = 32 * 1024 * 1024 * 1024;
+    topo.available_system_ram_bytes = 16 * 1024 * 1024 * 1024;
+    topo.cpu_cores_total = 8;
     topo
 }
 
@@ -163,3 +166,68 @@ async fn test_varlink_server_get_status_and_list_planes() {
     .await;
     assert!(rel_resp["parameters"].is_object());
 }
+
+#[tokio::test]
+async fn test_varlink_server_io_syntrop_inference1_telemetry_and_pressure() {
+    let dir = tempdir().unwrap();
+    let sock = dir.path().join("varlink_telemetry_test.sock");
+    let listener = bind_or_create_listener(sock.to_str().unwrap()).unwrap();
+    let arbiter = Arc::new(Arbiter::new(make_test_topo()));
+
+    let s_arb = arbiter.clone();
+    tokio::spawn(async move {
+        let _ = run_varlink_listener(listener, s_arb).await;
+    });
+
+    let mut client = UnixStream::connect(&sock).await.unwrap();
+
+    // 1. GetInterfaceDescription for io.syntrop.Inference1
+    let idl_resp = varlink_call(
+        &mut client,
+        "org.varlink.service.GetInterfaceDescription",
+        json!({ "interface": "io.syntrop.Inference1" }),
+    )
+    .await;
+    let desc = idl_resp["parameters"]["description"].as_str().unwrap();
+    assert!(desc.contains("interface io.syntrop.Inference1"));
+    assert!(desc.contains("method GetPressure()"));
+    assert!(desc.contains("method GetTopology()"));
+
+    // 2. io.syntrop.Inference1.GetPressure
+    let pressure_resp = varlink_call(
+        &mut client,
+        "io.syntrop.Inference1.GetPressure",
+        json!({}),
+    )
+    .await;
+    let params = &pressure_resp["parameters"];
+    assert!(params["level"].is_string());
+    assert!(params["cpu_some"].is_number());
+    assert!(params["memory_some"].is_number());
+    assert!(params["io_some"].is_number());
+
+    // 3. io.syntrop.Inference1.GetTopology
+    let topo_resp = varlink_call(
+        &mut client,
+        "io.syntrop.Inference1.GetTopology",
+        json!({}),
+    )
+    .await;
+    let topo_params = &topo_resp["parameters"];
+    let planes = topo_params["planes"].as_array().unwrap();
+    assert_eq!(planes.len(), 1);
+    assert_eq!(planes[0]["id"], "plane-varlink-test");
+    assert!(topo_params["total_ram"].as_u64().unwrap() > 0);
+    assert!(topo_params["cpu_cores"].as_u64().unwrap() > 0);
+
+    // 4. io.syntrop.Inference1.GetStatus
+    let status_resp = varlink_call(
+        &mut client,
+        "io.syntrop.Inference1.GetStatus",
+        json!({}),
+    )
+    .await;
+    assert_eq!(status_resp["parameters"]["status"], "active");
+    assert!(status_resp["parameters"]["pressure"].is_string());
+}
+
