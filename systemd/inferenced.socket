@@ -13,7 +13,9 @@ SocketMode=0660
 SocketGroup=sentry
 
 # File Descriptor 5: Local OpenAI/Ollama gateway socket
-ListenStream=127.0.0.1:11434
+ListenStream=/run/syntrop/gateway.sock
+SocketMode=0660
+SocketGroup=syntrop
 
 # File Descriptor 6: SCM_RIGHTS Zero-Copy Memfd Server socket
 ListenStream=/run/syntrop/fd.sock

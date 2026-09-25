@@ -25,7 +25,7 @@ fn test_cli_version_flag() {
     let out = Command::new(&bin).arg("--version").output().expect("inferenctl --version");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("inferenctl 0.1.0"));
+    assert!(stdout.contains(concat!("inferenctl ", env!("CARGO_PKG_VERSION"))));
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn test_cli_cat_config_missing_file_shows_defaults() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("[daemon]"));
-    assert!(stdout.contains("bind = \"127.0.0.1:11434\""));
+    assert!(stdout.contains("gateway_socket = \"/run/syntrop/gateway.sock\""));
 }
 
 #[test]

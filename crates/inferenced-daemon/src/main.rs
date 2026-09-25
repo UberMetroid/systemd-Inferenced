@@ -11,7 +11,7 @@ mod varlink;
 #[cfg(test)]
 mod fd_server_tests;
 
-use activation::{check_and_adopt_sockets, GatewayListener};
+use activation::{bind_standalone_unix, check_and_adopt_sockets, GatewayListener};
 use clap::Parser;
 use gateway::{build_gateway_router, serve_gateway, AppState};
 use inferenced_core::{
@@ -31,8 +31,11 @@ struct Cli {
     #[arg(short, long, default_value = "/etc/systemd/inferenced.conf")]
     config: PathBuf,
 
-    #[arg(short, long, default_value = "127.0.0.1:11434")]
-    bind: SocketAddr,
+    #[arg(short, long)]
+    bind: Option<SocketAddr>,
+
+    #[arg(long, default_value = "/run/syntrop/gateway.sock")]
+    gateway_socket: PathBuf,
 
     #[arg(long, default_value = "/run/syntrop/io.syntrop.Inference1")]
     varlink_socket: PathBuf,
@@ -132,8 +135,14 @@ async fn main() -> anyhow::Result<()> {
     let gateway_listener = match activated.gateway.take() {
         Some(l) => l,
         None => {
-            info!("Binding HTTP gateway to {}", cli.bind);
-            GatewayListener::Tcp(TcpListener::bind(cli.bind).await?)
+            if let Some(bind_addr) = cli.bind {
+                info!("Binding HTTP gateway to {}", bind_addr);
+                GatewayListener::Tcp(TcpListener::bind(bind_addr).await?)
+            } else {
+                info!("Binding HTTP gateway to unix socket {:?}", cli.gateway_socket);
+                let listener = bind_standalone_unix(&cli.gateway_socket)?;
+                GatewayListener::Unix(listener)
+            }
         }
     };
 

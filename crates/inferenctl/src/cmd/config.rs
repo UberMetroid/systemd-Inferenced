@@ -12,10 +12,10 @@ pub fn run_cat_config(config_path: impl AsRef<Path>) -> Result<()> {
     if !path.exists() {
         println!("# Default built-in configuration for systemd-inferenced");
         println!("[daemon]");
-        println!("bind = \"127.0.0.1:11434\"");
-        println!("varlink_socket = \"/run/systemd-inferenced/io.systemd.inferenced1\"");
-        println!("sentry_socket = \"/run/systemd-inferenced/sentry.sock\"");
-        println!("fd_socket = \"/run/systemd-inferenced/fd.sock\"");
+        println!("gateway_socket = \"/run/syntrop/gateway.sock\"");
+        println!("varlink_socket = \"/run/syntrop/io.syntrop.Inference1\"");
+        println!("sentry_socket = \"/run/syntrop/sentry.sock\"");
+        println!("fd_socket = \"/run/syntrop/fd.sock\"");
         return Ok(());
     }
     let content = fs::read_to_string(path)
